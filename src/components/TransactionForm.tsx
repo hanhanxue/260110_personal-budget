@@ -65,7 +65,6 @@ export default function TransactionForm({
   const [manualRates, setManualRates] = useState(false);
 
   const [showVendorSuggestions, setShowVendorSuggestions] = useState(false);
-  const [showAccountSuggestions, setShowAccountSuggestions] = useState(false);
   const [showTagSuggestions, setShowTagSuggestions] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -184,9 +183,6 @@ export default function TransactionForm({
 
   const filteredVendors = vendors.filter((v) =>
     v.toLowerCase().includes(vendor.toLowerCase())
-  );
-  const filteredAccounts = accounts.filter((a) =>
-    a.toLowerCase().includes(account.toLowerCase())
   );
   const filteredTags = tags.filter((t) =>
     t.toLowerCase().includes(tag.toLowerCase())
@@ -319,8 +315,20 @@ export default function TransactionForm({
             <input
               type="number"
               id="amount"
+              inputMode="decimal"
+              pattern="[0-9]*"
               value={amount}
-              onChange={(e) => setAmount(e.target.value)}
+              onChange={(e) => {
+                // Only allow numbers and decimal point
+                const value = e.target.value;
+                const numericValue = value.replace(/[^0-9.]/g, '');
+                // Prevent multiple decimal points
+                const parts = numericValue.split('.');
+                const filteredValue = parts.length > 2 
+                  ? parts[0] + '.' + parts.slice(1).join('')
+                  : numericValue;
+                setAmount(filteredValue);
+              }}
               className="form-input pl-8"
               style={inputStyle}
               placeholder="0.00"
@@ -490,39 +498,24 @@ export default function TransactionForm({
         )}
       </div>
 
-      <div className="form-group relative">
+      <div className="form-group">
         <label htmlFor="account" className="form-label">
           Account *
         </label>
-        <input
-          type="text"
+        <select
           id="account"
           value={account}
           onChange={(e) => setAccount(e.target.value)}
-          onFocus={() => setShowAccountSuggestions(true)}
-          onBlur={() => setTimeout(() => setShowAccountSuggestions(false), 200)}
           className="form-input"
           style={inputStyle}
-          placeholder="Payment method"
-          autoComplete="off"
           required
-        />
-        {showAccountSuggestions && filteredAccounts.length > 0 && (
-          <ul className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-            {filteredAccounts.slice(0, 5).map((a) => (
-              <li
-                key={a}
-                onClick={() => {
-                  setAccount(a);
-                  setShowAccountSuggestions(false);
-                }}
-                className="px-4 py-2 cursor-pointer hover:bg-gray-100 text-black"
-              >
-                {a}
-              </li>
-            ))}
-          </ul>
-        )}
+        >
+          <option value="">Select account...</option>
+          <option value="RBC Visa">RBC Visa</option>
+          <option value="RBC Checking">RBC Checking</option>
+          <option value="BMO Checking">BMO Checking</option>
+          <option value="Chase Total Checking">Chase Total Checking</option>
+        </select>
       </div>
 
       <div className="form-group">
