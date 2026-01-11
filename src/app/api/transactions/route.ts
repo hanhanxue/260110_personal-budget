@@ -54,7 +54,7 @@ function validateTransaction(data: unknown): TransactionInput | { error: string 
   const t = data as Record<string, unknown>;
 
   // Required fields
-  if (!t.date || typeof t.date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(t.date)) {
+  if (!t.transactionDate || typeof t.transactionDate !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(t.transactionDate)) {
     return { error: 'Invalid date format (expected YYYY-MM-DD)' };
   }
 
@@ -111,7 +111,7 @@ function validateTransaction(data: unknown): TransactionInput | { error: string 
   }
 
   return {
-    transactionDate: t.date,
+    transactionDate: t.transactionDate,
     table: t.table,
     subcategory: t.subcategory,
     lineItem: t.lineItem,

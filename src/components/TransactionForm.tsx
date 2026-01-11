@@ -39,9 +39,9 @@ export default function TransactionForm({
   onSuccess,
 }: TransactionFormProps) {
   const [transactionDate, setTransactionDate] = useState(formatDate(new Date()));
-  const [table, setTable] = useState('');
-  const [subcategory, setSubcategory] = useState('');
-  const [lineItem, setLineItem] = useState('');
+  const [table, setTable] = useState('Discretionary');
+  const [subcategory, setSubcategory] = useState('Dining');
+  const [lineItem, setLineItem] = useState('Restaurants');
   const [amount, setAmount] = useState('');
   const [currency, setCurrency] = useState<Currency>('CAD');
   const [cadAmount, setCadAmount] = useState('');
@@ -51,7 +51,7 @@ export default function TransactionForm({
   const [vendor, setVendor] = useState('');
   const [note, setNote] = useState('');
   const [receiptUrl, setReceiptUrl] = useState('');
-  const [account, setAccount] = useState('');
+  const [account, setAccount] = useState('RBC Visa');
   const [period, setPeriod] = useState<Period>('one-time');
   const [distribute, setDistribute] = useState(false);
   const [tag, setTag] = useState('');
@@ -73,7 +73,7 @@ export default function TransactionForm({
   useEffect(() => {
     setCurrency(getLastUsedCurrency());
     const savedAccount = getLastUsedAccount();
-    if (savedAccount) setAccount(savedAccount);
+    setAccount(savedAccount || 'RBC Visa');
   }, []);
 
   const fetchRates = useCallback(async () => {
@@ -198,7 +198,7 @@ export default function TransactionForm({
     setSubmitSuccess(false);
 
     if (!table || !subcategory || !lineItem) {
-      setSubmitError('Please select category, subcategory, and line item');
+      setSubmitError('Please select table, subcategory, and line item');
       return;
     }
 
@@ -262,9 +262,10 @@ export default function TransactionForm({
       setLastUsedCurrency(currency);
       setLastUsedAccount(account);
 
-      setTable('');
-      setSubcategory('');
-      setLineItem('');
+      setTransactionDate(formatDate(new Date()));
+      setTable('Discretionary');
+      setSubcategory('Dining');
+      setLineItem('Restaurants');
       setAmount('');
       setCadAmount('');
       setCadRate('1');
@@ -276,6 +277,7 @@ export default function TransactionForm({
       setTag('');
       setDistribute(false);
       setPeriod('one-time');
+      // Note: account is preserved via setLastUsedAccount above, so it will be set from preferences
 
       setSubmitSuccess(true);
       onSuccess?.();
@@ -304,32 +306,6 @@ export default function TransactionForm({
           {submitError}
         </div>
       )}
-
-      <div className="form-group">
-        <label htmlFor="date" className="form-label">
-          Transaction Date *
-        </label>
-        <input
-          type="date"
-          id="date"
-          value={transactionDate}
-          onChange={(e) => setTransactionDate(e.target.value)}
-          className="form-input"
-          style={inputStyle}
-          required
-        />
-      </div>
-
-      <CascadingSelect
-        schema={schema}
-        table={table}
-        subcategory={subcategory}
-        lineItem={lineItem}
-        onTableChange={setTable}
-        onSubcategoryChange={setSubcategory}
-        onLineItemChange={setLineItem}
-        disabled={isSubmitting}
-      />
 
       <div className="grid grid-cols-3 gap-3">
         <div className="col-span-2 form-group">
@@ -373,6 +349,62 @@ export default function TransactionForm({
           </select>
         </div>
       </div>
+
+      <div className="form-group">
+        <label htmlFor="date" className="form-label">
+          Transaction Date * (YYYY-MM-DD)
+        </label>
+        <input
+          type="text"
+          id="date"
+          value={transactionDate}
+          onChange={(e) => {
+            const value = e.target.value;
+            // Allow only digits and hyphens, and format as user types
+            const cleaned = value.replace(/[^\d-]/g, '');
+            // Limit to YYYY-MM-DD format
+            if (cleaned.length <= 10) {
+              let formatted = cleaned;
+              // Auto-insert hyphens
+              if (cleaned.length > 4 && cleaned[4] !== '-') {
+                formatted = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
+              }
+              if (cleaned.length > 7 && formatted[7] !== '-') {
+                formatted = formatted.slice(0, 7) + '-' + formatted.slice(7);
+              }
+              setTransactionDate(formatted);
+            }
+          }}
+          onBlur={(e) => {
+            // Validate and fix format on blur
+            const value = e.target.value;
+            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+            if (value && !dateRegex.test(value)) {
+              // Try to parse and reformat
+              const date = new Date(value);
+              if (!isNaN(date.getTime())) {
+                setTransactionDate(formatDate(date));
+              }
+            }
+          }}
+          placeholder="2026-01-11"
+          pattern="\d{4}-\d{2}-\d{2}"
+          className="form-input"
+          style={inputStyle}
+          required
+        />
+      </div>
+
+      <CascadingSelect
+        schema={schema}
+        table={table}
+        subcategory={subcategory}
+        lineItem={lineItem}
+        onTableChange={setTable}
+        onSubcategoryChange={setSubcategory}
+        onLineItemChange={setLineItem}
+        disabled={isSubmitting}
+      />
 
       {amount && parseFloat(amount) > 0 && (
         <div className="p-4 bg-gray-50 rounded-lg space-y-3">

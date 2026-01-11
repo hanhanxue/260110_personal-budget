@@ -47,7 +47,7 @@ export default function CascadingSelect({
     <div className="space-y-4">
       <div className="form-group">
         <label htmlFor="table" className="form-label">
-          Category *
+          Table *
         </label>
         <select
           id="table"
@@ -58,7 +58,7 @@ export default function CascadingSelect({
           disabled={disabled}
           required
         >
-          <option value="">Select category...</option>
+          <option value="">Select table...</option>
           {schema.tables.map((t) => (
             <option key={t} value={t}>
               {t}
@@ -81,7 +81,7 @@ export default function CascadingSelect({
           required
         >
           <option value="">
-            {table ? 'Select subcategory...' : 'Select category first'}
+            {table ? 'Select subcategory...' : 'Select table first'}
           </option>
           {availableSubcategories.map((s) => (
             <option key={s} value={s}>
