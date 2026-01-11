@@ -295,12 +295,11 @@ export default function TransactionForm({
       const password = sessionStorage.getItem('budget-password') || '';
       
       const response = await fetch('/api/transactions', {
+        method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-auth-password': password,
         },
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(transaction),
       });
 
