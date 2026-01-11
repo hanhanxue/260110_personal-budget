@@ -227,18 +227,7 @@ export async function appendTransaction(transaction: TransactionInput): Promise<
 
   const row = transactionToRow(transaction);
 
-  // Append the row
-  const appendResponse = await sheets.spreadsheets.values.append({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Transactions!A:Q',
-    valueInputOption: 'USER_ENTERED',
-    insertDataOption: 'INSERT_ROWS',
-    requestBody: {
-      values: [row],
-    },
-  });
-
-  // Get the sheet ID and the row number that was just added
+  // Get the sheet ID first
   const spreadsheet = await sheets.spreadsheets.get({
     spreadsheetId: SPREADSHEET_ID,
   });
@@ -252,45 +241,78 @@ export async function appendTransaction(transaction: TransactionInput): Promise<
   }
 
   const sheetId = transactionsSheet.properties.sheetId;
-  
-  // Get the updated range to find the new row
-  const updatedRange = appendResponse.data.updates?.updatedRange;
-  if (updatedRange) {
-    // Extract row number from range (e.g., "Transactions!A123:R123" -> 123)
-    const rowMatch = updatedRange.match(/!A(\d+):/);
-    if (rowMatch) {
-      const rowNumber = parseInt(rowMatch[1], 10);
-      
-      // Format the date cell to display as YYYY-MM-DD
-      await sheets.spreadsheets.batchUpdate({
-        spreadsheetId: SPREADSHEET_ID,
-        requestBody: {
-          requests: [
-            {
-              repeatCell: {
-                range: {
-                  sheetId: sheetId,
-                  startRowIndex: rowNumber - 1, // Convert to 0-based index
-                  endRowIndex: rowNumber,
-                  startColumnIndex: 0,
-                  endColumnIndex: 1,
+  const rowNumber = 2; // Insert at row 2 (right after header row 1)
+
+  // Insert a new row at row 2 and add the transaction data
+  // This will shift all existing rows down
+  await sheets.spreadsheets.batchUpdate({
+    spreadsheetId: SPREADSHEET_ID,
+    requestBody: {
+      requests: [
+        // Insert a new row at row 2 (0-based index: 1)
+        {
+          insertDimension: {
+            range: {
+              sheetId: sheetId,
+              dimension: 'ROWS',
+              startIndex: 1, // 0-based: row 1 = row 2 in the sheet
+              endIndex: 2,
+            },
+            inheritFromBefore: false,
+          },
+        },
+        // Update the new row with transaction data
+        {
+          updateCells: {
+            range: {
+              sheetId: sheetId,
+              startRowIndex: 1, // 0-based: row 1 = row 2 in the sheet
+              endRowIndex: 2,
+              startColumnIndex: 0,
+              endColumnIndex: row.length,
+            },
+            rows: [
+              {
+                values: row.map((value) => {
+                  if (typeof value === 'number') {
+                    return {
+                      userEnteredValue: { numberValue: value },
+                    };
+                  } else {
+                    return {
+                      userEnteredValue: { stringValue: String(value) },
+                    };
+                  }
+                }),
+              },
+            ],
+            fields: 'userEnteredValue',
+          },
+        },
+        // Format the date cell (column A) to display as YYYY-MM-DD
+        {
+          repeatCell: {
+            range: {
+              sheetId: sheetId,
+              startRowIndex: 1, // 0-based: row 1 = row 2 in the sheet
+              endRowIndex: 2,
+              startColumnIndex: 0,
+              endColumnIndex: 1,
+            },
+            cell: {
+              userEnteredFormat: {
+                numberFormat: {
+                  type: 'DATE',
+                  pattern: 'yyyy-mm-dd',
                 },
-                cell: {
-                  userEnteredFormat: {
-                    numberFormat: {
-                      type: 'DATE',
-                      pattern: 'yyyy-mm-dd',
-                    },
-                  },
-                },
-                fields: 'userEnteredFormat.numberFormat',
               },
             },
-          ],
+            fields: 'userEnteredFormat.numberFormat',
+          },
         },
-      });
-    }
-  }
+      ],
+    },
+  });
 }
 
 export async function updateTransaction(
