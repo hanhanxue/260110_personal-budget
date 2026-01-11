@@ -133,6 +133,15 @@ export async function POST(
   // Check authentication
   const authHeader = request.headers.get('x-auth-password');
   const APP_PASSWORD = process.env.APP_PASSWORD;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // In production, require password to be set
+  if (isProduction && !APP_PASSWORD) {
+    return NextResponse.json(
+      { success: false, error: 'Password protection is not configured. Please set APP_PASSWORD environment variable.' },
+      { status: 500 }
+    );
+  }
   
   if (APP_PASSWORD && authHeader !== APP_PASSWORD) {
     return NextResponse.json(
@@ -177,6 +186,15 @@ export async function PUT(
   // Check authentication
   const authHeader = request.headers.get('x-auth-password');
   const APP_PASSWORD = process.env.APP_PASSWORD;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // In production, require password to be set
+  if (isProduction && !APP_PASSWORD) {
+    return NextResponse.json(
+      { success: false, error: 'Password protection is not configured. Please set APP_PASSWORD environment variable.' },
+      { status: 500 }
+    );
+  }
   
   if (APP_PASSWORD && authHeader !== APP_PASSWORD) {
     return NextResponse.json(
@@ -239,6 +257,15 @@ export async function DELETE(
   // Check authentication
   const authHeader = request.headers.get('x-auth-password');
   const APP_PASSWORD = process.env.APP_PASSWORD;
+  const isProduction = process.env.NODE_ENV === 'production';
+  
+  // In production, require password to be set
+  if (isProduction && !APP_PASSWORD) {
+    return NextResponse.json(
+      { success: false, error: 'Password protection is not configured. Please set APP_PASSWORD environment variable.' },
+      { status: 500 }
+    );
+  }
   
   if (APP_PASSWORD && authHeader !== APP_PASSWORD) {
     return NextResponse.json(

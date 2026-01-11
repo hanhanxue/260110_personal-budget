@@ -1,7 +1,6 @@
 import type { Currency, ExchangeRates } from './types';
 
-const API_KEY = process.env.EXCHANGE_RATE_API_KEY;
-const BASE_URL = 'https://v6.exchangerate-api.com/v6';
+const BASE_URL = 'https://api.frankfurter.dev/v1';
 
 // In-memory cache for exchange rates
 // Key format: "CURRENCY-YYYY-MM-DD"
@@ -9,6 +8,12 @@ const rateCache = new Map<string, ExchangeRates>();
 
 function getCacheKey(currency: Currency, date: string): string {
   return `${currency}-${date}`;
+}
+
+interface FrankfurterResponse {
+  base: string;
+  date: string;
+  rates: Record<string, number>;
 }
 
 export async function getExchangeRates(
@@ -22,101 +27,81 @@ export async function getExchangeRates(
     return cached;
   }
 
-  // If the currency is CAD, we need rates to USD
-  // If the currency is USD, we need rates to CAD
-  // For other currencies, we need rates to both CAD and USD
-
   try {
-    // Always use latest rates endpoint
-    // The free plan doesn't support historical data, so we always fetch current rates
-    // regardless of the requested date
+    // Check if date is today or in the future
     const todayStr = new Date().toISOString().split('T')[0];
-    console.log(`Requested date: ${date}, Today: ${todayStr}, Using latest rates (free plan limitation)`);
+    const isToday = date === todayStr;
+    const isFuture = date > todayStr;
+    
+    // Use latest endpoint for today or future dates, historical endpoint for past dates
+    const endpoint = (isToday || isFuture) ? 'latest' : date;
+    const url = `${BASE_URL}/${endpoint}?base=${fromCurrency}&symbols=CAD,USD`;
+    
+    console.log(`Fetching rates: ${fromCurrency} for date ${date} (endpoint: ${endpoint})`);
 
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Frankfurter API error (${response.status}):`, errorText);
+      throw new Error(`Exchange rate API error: ${response.status} - ${errorText.substring(0, 100)}`);
+    }
+
+    const data: FrankfurterResponse = await response.json();
+
+    if (!data.rates) {
+      console.error('Invalid response from Frankfurter API:', data);
+      throw new Error('Invalid response from exchange rate API');
+    }
+
+    // Build the rates object
+    // If fromCurrency is CAD, rates.USD gives us CAD to USD rate
+    // If fromCurrency is USD, rates.CAD gives us USD to CAD rate
+    // If fromCurrency is something else, rates.CAD and rates.USD give us rates from that currency
     let rates: ExchangeRates;
 
     if (fromCurrency === 'CAD') {
-      // CAD is base, get USD rate (always use latest rates)
-      const usdRate = await fetchRate('CAD', 'USD', todayStr, true);
+      // Base is CAD, so CAD = 1, get USD rate from response
+      const usdRate = data.rates.USD;
+      if (!usdRate) {
+        throw new Error('USD rate not found in response');
+      }
       rates = { CAD: 1, USD: usdRate };
     } else if (fromCurrency === 'USD') {
-      // USD is base, get CAD rate (always use latest rates)
-      const cadRate = await fetchRate('USD', 'CAD', todayStr, true);
+      // Base is USD, so USD = 1, get CAD rate from response
+      const cadRate = data.rates.CAD;
+      if (!cadRate) {
+        throw new Error('CAD rate not found in response');
+      }
       rates = { CAD: cadRate, USD: 1 };
     } else {
-      // Other currency, get both CAD and USD rates (always use latest rates)
-      const [cadRate, usdRate] = await Promise.all([
-        fetchRate(fromCurrency, 'CAD', todayStr, true),
-        fetchRate(fromCurrency, 'USD', todayStr, true),
-      ]);
+      // Base is another currency, get both CAD and USD rates
+      const cadRate = data.rates.CAD;
+      const usdRate = data.rates.USD;
+      if (!cadRate || !usdRate) {
+        throw new Error('CAD or USD rate not found in response');
+      }
+      // Convert to rates relative to the fromCurrency
+      // If we have EUR -> CAD and EUR -> USD, we need to calculate CAD and USD relative to fromCurrency
+      // Actually, the rates are already from fromCurrency to CAD/USD, so we can use them directly
+      // But we need to normalize them to have fromCurrency = 1
+      // Wait, the response gives us rates FROM fromCurrency TO CAD/USD
+      // So if fromCurrency is EUR and we get rates.CAD = 1.5, that means 1 EUR = 1.5 CAD
+      // But our ExchangeRates interface expects rates relative to the fromCurrency
+      // So if fromCurrency is EUR, we want { CAD: 1.5, USD: 1.1 } meaning 1 EUR = 1.5 CAD and 1 EUR = 1.1 USD
+      // That's exactly what the API gives us!
       rates = { CAD: cadRate, USD: usdRate };
     }
 
     // Cache the result
     rateCache.set(cacheKey, rates);
 
+    console.log(`Fetched rates for ${fromCurrency} on ${date}:`, rates);
     return rates;
   } catch (error) {
     console.error('Failed to fetch exchange rates:', error);
     throw new Error('Failed to fetch exchange rates');
   }
-}
-
-async function fetchRate(
-  from: Currency,
-  to: 'CAD' | 'USD',
-  date: string,
-  isToday: boolean
-): Promise<number> {
-  if (!API_KEY) {
-    console.error('EXCHANGE_RATE_API_KEY is not configured. Available env vars:', Object.keys(process.env).filter(k => k.includes('EXCHANGE')));
-    throw new Error('EXCHANGE_RATE_API_KEY not configured');
-  }
-  
-  console.log(`Fetching rate: ${from} to ${to} for date ${date} (isToday: ${isToday})`);
-
-  // exchangerate-api.com endpoints
-  // Latest: /v6/{API_KEY}/latest/{BASE}
-  // Historical: /v6/{API_KEY}/history/{BASE}/{YEAR}/{MONTH}/{DAY}
-
-  let url: string;
-
-  if (isToday) {
-    url = `${BASE_URL}/${API_KEY}/latest/${from}`;
-  } else {
-    const [year, month, day] = date.split('-');
-    if (!year || !month || !day) {
-      throw new Error(`Invalid date format: ${date}`);
-    }
-    url = `${BASE_URL}/${API_KEY}/history/${from}/${year}/${month}/${day}`;
-  }
-
-  console.log(`Fetching exchange rate from: ${url.replace(API_KEY, '***')}`);
-
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`Exchange rate API error (${response.status}):`, errorText);
-    throw new Error(`Exchange rate API error: ${response.status} - ${errorText.substring(0, 100)}`);
-  }
-
-  const data = await response.json();
-
-  if (data.result !== 'success') {
-    const errorType = data['error-type'] || 'Unknown error';
-    console.error('Exchange rate API error:', errorType, data);
-    throw new Error(`Exchange rate API error: ${errorType}`);
-  }
-
-  const rates = data.conversion_rates;
-
-  if (!rates || !rates[to]) {
-    console.error(`Rate not found for ${from} to ${to}. Available rates:`, Object.keys(rates || {}));
-    throw new Error(`Rate not found for ${from} to ${to}`);
-  }
-
-  return rates[to];
 }
 
 // Calculate converted amounts

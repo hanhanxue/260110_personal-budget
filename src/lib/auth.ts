@@ -22,8 +22,13 @@ export function checkAuth(request: NextRequest): boolean {
 }
 
 export function verifyPassword(password: string): boolean {
+  // In production, require a password to be set
   if (!APP_PASSWORD) {
-    return true; // No password set, allow access
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction) {
+      return false; // Reject if no password is configured in production
+    }
+    return true; // In development, allow access if no password is set
   }
   return password === APP_PASSWORD;
 }

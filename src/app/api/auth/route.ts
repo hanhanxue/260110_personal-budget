@@ -6,8 +6,19 @@ const APP_PASSWORD = process.env.APP_PASSWORD;
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<ApiResponse<{ authenticated: boolean }>>> {
+  // In production, require a password to be set
   if (!APP_PASSWORD) {
-    // If no password is set, allow access (for development)
+    const isProduction = process.env.NODE_ENV === 'production';
+    if (isProduction) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'Password protection is not configured. Please set APP_PASSWORD environment variable.',
+        },
+        { status: 500 }
+      );
+    }
+    // In development, allow access if no password is set
     return NextResponse.json({
       success: true,
       data: { authenticated: true },
