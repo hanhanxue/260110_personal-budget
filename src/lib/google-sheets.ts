@@ -12,37 +12,46 @@ function getAuth() {
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   
   if (!privateKey || !clientEmail) {
-    throw new Error('Google credentials environment variables are not configured');
+    return null;
   }
 
-  // Ensure the private key is properly formatted with newlines
-  // Handle both escaped newlines (\n) and actual newlines
-  // The key from Google's JSON file has \n as literal characters that need to be converted
-  let formattedKey = privateKey.replace(/\\n/g, '\n').trim();
+  try {
+    // Ensure the private key is properly formatted with newlines
+    // Handle both escaped newlines (\n) and actual newlines
+    // The key from Google's JSON file has \n as literal characters that need to be converted
+    let formattedKey = privateKey.replace(/\\n/g, '\n').trim();
 
-  // Ensure the key starts and ends with proper markers if they're missing
-  if (!formattedKey.includes('BEGIN')) {
-    // If no BEGIN marker, the key might be in a different format
-    // Try to detect and format it properly
-    if (formattedKey.startsWith('-----')) {
-      // Already has markers, just ensure proper formatting
-    } else {
-      // Key might be missing headers - this is unusual but handle it
-      console.warn('Private key may be missing PEM headers');
+    // Ensure the key starts and ends with proper markers if they're missing
+    if (!formattedKey.includes('BEGIN')) {
+      // If no BEGIN marker, the key might be in a different format
+      // Try to detect and format it properly
+      if (formattedKey.startsWith('-----')) {
+        // Already has markers, just ensure proper formatting
+      } else {
+        // Key might be missing headers - this is unusual but handle it
+        console.warn('Private key may be missing PEM headers');
+      }
     }
-  }
 
-  return new google.auth.GoogleAuth({
-    credentials: {
-      client_email: clientEmail,
-      private_key: formattedKey,
-    },
-    scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-  });
+    return new google.auth.GoogleAuth({
+      credentials: {
+        client_email: clientEmail,
+        private_key: formattedKey,
+      },
+      scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+    });
+  } catch (error) {
+    // Handle OpenSSL or other auth errors gracefully
+    console.error('Error initializing Google Auth:', error);
+    return null;
+  }
 }
 
 function getSheets() {
   const auth = getAuth();
+  if (!auth) {
+    throw new Error('Google credentials are not available');
+  }
   return google.sheets({ version: 'v4', auth });
 }
 
@@ -52,50 +61,56 @@ export async function fetchSchema(): Promise<Schema> {
     throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
   }
 
-  const sheets = getSheets();
+  try {
+    const sheets = getSheets();
 
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Schema!A2:D', // Skip header row
-  });
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Schema!A2:D', // Skip header row
+    });
 
-  const rows = response.data.values || [];
+    const rows = response.data.values || [];
 
-  const tables = new Set<string>();
-  const subcategories: Record<string, Set<string>> = {};
-  const lineItems: Record<string, Set<string>> = {};
+    const tables = new Set<string>();
+    const subcategories: Record<string, Set<string>> = {};
+    const lineItems: Record<string, Set<string>> = {};
 
-  for (const row of rows) {
-    const [table, subcategory, lineItem, active] = row;
+    for (const row of rows) {
+      const [table, subcategory, lineItem, active] = row;
 
-    // Skip inactive items
-    if (active?.toUpperCase() !== 'TRUE') continue;
+      // Skip inactive items
+      if (active?.toUpperCase() !== 'TRUE') continue;
 
-    tables.add(table);
+      tables.add(table);
 
-    // Track subcategories per table
-    if (!subcategories[table]) {
-      subcategories[table] = new Set();
+      // Track subcategories per table
+      if (!subcategories[table]) {
+        subcategories[table] = new Set();
+      }
+      subcategories[table].add(subcategory);
+
+      // Track line items per subcategory (using "table|subcategory" as key)
+      const subKey = `${table}|${subcategory}`;
+      if (!lineItems[subKey]) {
+        lineItems[subKey] = new Set();
+      }
+      lineItems[subKey].add(lineItem);
     }
-    subcategories[table].add(subcategory);
 
-    // Track line items per subcategory (using "table|subcategory" as key)
-    const subKey = `${table}|${subcategory}`;
-    if (!lineItems[subKey]) {
-      lineItems[subKey] = new Set();
-    }
-    lineItems[subKey].add(lineItem);
+    return {
+      tables: Array.from(tables),
+      subcategories: Object.fromEntries(
+        Object.entries(subcategories).map(([k, v]) => [k, Array.from(v)])
+      ),
+      lineItems: Object.fromEntries(
+        Object.entries(lineItems).map(([k, v]) => [k, Array.from(v)])
+      ),
+    };
+  } catch (error) {
+    // Handle OpenSSL or other errors gracefully during build
+    console.error('Error fetching schema:', error);
+    throw error;
   }
-
-  return {
-    tables: Array.from(tables),
-    subcategories: Object.fromEntries(
-      Object.entries(subcategories).map(([k, v]) => [k, Array.from(v)])
-    ),
-    lineItems: Object.fromEntries(
-      Object.entries(lineItems).map(([k, v]) => [k, Array.from(v)])
-    ),
-  };
 }
 
 // Transaction operations

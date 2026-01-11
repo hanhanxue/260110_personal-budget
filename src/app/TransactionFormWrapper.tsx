@@ -11,12 +11,15 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 async function getData() {
-  // Check if required environment variables are available
-  // During build time on Vercel, these might not be available
-  if (!process.env.GOOGLE_SHEETS_ID || !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || !process.env.GOOGLE_PRIVATE_KEY) {
-    // Return empty data during build if env vars are missing
-    // This prevents build failures while still allowing the page to render
-    console.warn('Google Sheets credentials not available, returning empty data');
+  // Check if we're in a build environment or if credentials are missing
+  const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
+                       process.env.VERCEL_ENV === undefined ||
+                       !process.env.GOOGLE_SHEETS_ID || 
+                       !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 
+                       !process.env.GOOGLE_PRIVATE_KEY;
+  
+  if (isBuildTime) {
+    // Return empty data during build to prevent build failures
     return {
       schema: { tables: [], subcategories: {}, lineItems: {} },
       vendors: [],
@@ -27,10 +30,10 @@ async function getData() {
 
   try {
     const [schema, vendors, accounts, tags] = await Promise.all([
-      fetchSchema(),
-      getUniqueVendors(),
-      getUniqueAccounts(),
-      getUniqueTags(),
+      fetchSchema().catch(() => ({ tables: [], subcategories: {}, lineItems: {} })),
+      getUniqueVendors().catch(() => []),
+      getUniqueAccounts().catch(() => []),
+      getUniqueTags().catch(() => []),
     ]);
 
     return { schema, vendors, accounts, tags };
