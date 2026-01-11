@@ -1,10 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { put } from '@vercel/blob';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import type { ApiResponse } from '@/lib/types';
 
 interface UploadResponse {
   url: string;
 }
+
+// Initialize S3 client for Cloudflare R2
+const s3Client = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT || `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: process.env.R2_ACCESS_KEY_ID || '',
+    secretAccessKey: process.env.R2_SECRET_ACCESS_KEY || '',
+  },
+});
+
+const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || '';
+const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL || ''; // Your custom domain or R2 public URL
 
 export async function POST(
   request: NextRequest
@@ -61,19 +74,55 @@ export async function POST(
       );
     }
 
+    // Validate R2 configuration
+    if (!R2_BUCKET_NAME || !process.env.R2_ACCESS_KEY_ID || !process.env.R2_SECRET_ACCESS_KEY) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'R2 storage is not configured. Please set R2_BUCKET_NAME, R2_ACCESS_KEY_ID, and R2_SECRET_ACCESS_KEY environment variables.',
+        },
+        { status: 500 }
+      );
+    }
+
     // Generate unique filename
     const timestamp = Date.now();
     const extension = file.name.split('.').pop() || 'jpg';
     const filename = `receipts/${timestamp}.${extension}`;
 
-    // Upload to Vercel Blob
-    const blob = await put(filename, file, {
-      access: 'public',
+    // Convert file to buffer
+    const arrayBuffer = await file.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+
+    // Upload to Cloudflare R2
+    const command = new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: filename,
+      Body: buffer,
+      ContentType: file.type,
     });
+
+    await s3Client.send(command);
+
+    // Construct the public URL
+    // R2_PUBLIC_URL should be your custom domain (e.g., https://receipts.yourdomain.com)
+    // or your R2.dev subdomain (e.g., https://your-bucket.your-account-id.r2.dev)
+    // Format: https://<bucket-name>.<account-id>.r2.dev
+    if (!R2_PUBLIC_URL) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'R2_PUBLIC_URL is not configured. Please set it to your R2 public URL (e.g., https://your-bucket.your-account-id.r2.dev)',
+        },
+        { status: 500 }
+      );
+    }
+    
+    const publicUrl = `${R2_PUBLIC_URL.replace(/\/$/, '')}/${filename}`;
 
     return NextResponse.json({
       success: true,
-      data: { url: blob.url },
+      data: { url: publicUrl },
     });
   } catch (error) {
     console.error('Error uploading file:', error);
