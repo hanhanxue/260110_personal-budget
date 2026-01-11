@@ -6,9 +6,12 @@ import { CURRENCIES } from '@/lib/types';
 export async function GET(
   request: NextRequest
 ): Promise<NextResponse<ApiResponse<ExchangeRateResponse>>> {
+  console.log('Exchange rate API called');
   const searchParams = request.nextUrl.searchParams;
   const from = searchParams.get('from') as Currency;
   const date = searchParams.get('date');
+  
+  console.log('Params:', { from, date });
 
   // Validate currency
   if (!from || !CURRENCIES.includes(from)) {

@@ -22,6 +22,13 @@ export default function CurrencyToggle({ onChange }: CurrencyToggleProps) {
     setCurrency(newCurrency);
     setReferenceCurrency(newCurrency);
     onChange?.(newCurrency);
+    
+    // Dispatch custom event to notify other components
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('currencyChanged', { 
+        detail: { currency: newCurrency } 
+      }));
+    }
   };
 
   if (!mounted) {

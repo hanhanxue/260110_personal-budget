@@ -9,6 +9,17 @@ interface UploadResponse {
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<ApiResponse<UploadResponse>>> {
+  // Check authentication
+  const authHeader = request.headers.get('x-auth-password');
+  const APP_PASSWORD = process.env.APP_PASSWORD;
+  
+  if (APP_PASSWORD && authHeader !== APP_PASSWORD) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
   try {
     const formData = await request.formData();
     const file = formData.get('file') as File | null;

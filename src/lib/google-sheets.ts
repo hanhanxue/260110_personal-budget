@@ -144,9 +144,22 @@ function rowToTransaction(row: string[], index: number): Transaction {
   };
 }
 
-function transactionToRow(transaction: TransactionInput): string[] {
+function transactionToRow(transaction: TransactionInput): (string | number)[] {
+  // Parse the date and convert to Google Sheets date serial number
+  // Google Sheets uses days since December 30, 1899
+  const dateParts = transaction.transactionDate.split('-');
+  const date = new Date(
+    parseInt(dateParts[0], 10),
+    parseInt(dateParts[1], 10) - 1,
+    parseInt(dateParts[2], 10)
+  );
+  
+  // Calculate serial number: days since December 30, 1899
+  const epoch = new Date(1899, 11, 30);
+  const serialNumber = Math.floor((date.getTime() - epoch.getTime()) / (1000 * 60 * 60 * 24));
+  
   return [
-    transaction.transactionDate,
+    serialNumber, // Use serial number instead of string
     transaction.table,
     transaction.subcategory,
     transaction.lineItem,
@@ -216,7 +229,8 @@ export async function appendTransaction(transaction: TransactionInput): Promise<
 
   const row = transactionToRow(transaction);
 
-  await sheets.spreadsheets.values.append({
+  // Append the row
+  const appendResponse = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
     range: 'Transactions!A:R',
     valueInputOption: 'USER_ENTERED',
@@ -225,6 +239,60 @@ export async function appendTransaction(transaction: TransactionInput): Promise<
       values: [row],
     },
   });
+
+  // Get the sheet ID and the row number that was just added
+  const spreadsheet = await sheets.spreadsheets.get({
+    spreadsheetId: SPREADSHEET_ID,
+  });
+
+  const transactionsSheet = spreadsheet.data.sheets?.find(
+    (sheet) => sheet.properties?.title === 'Transactions'
+  );
+
+  if (!transactionsSheet?.properties?.sheetId) {
+    throw new Error('Transactions sheet not found');
+  }
+
+  const sheetId = transactionsSheet.properties.sheetId;
+  
+  // Get the updated range to find the new row
+  const updatedRange = appendResponse.data.updates?.updatedRange;
+  if (updatedRange) {
+    // Extract row number from range (e.g., "Transactions!A123:R123" -> 123)
+    const rowMatch = updatedRange.match(/!A(\d+):/);
+    if (rowMatch) {
+      const rowNumber = parseInt(rowMatch[1], 10);
+      
+      // Format the date cell to display as YYYY-MM-DD
+      await sheets.spreadsheets.batchUpdate({
+        spreadsheetId: SPREADSHEET_ID,
+        requestBody: {
+          requests: [
+            {
+              repeatCell: {
+                range: {
+                  sheetId: sheetId,
+                  startRowIndex: rowNumber - 1, // Convert to 0-based index
+                  endRowIndex: rowNumber,
+                  startColumnIndex: 0,
+                  endColumnIndex: 1,
+                },
+                cell: {
+                  userEnteredFormat: {
+                    numberFormat: {
+                      type: 'DATE',
+                      pattern: 'yyyy-mm-dd',
+                    },
+                  },
+                },
+                fields: 'userEnteredFormat.numberFormat',
+              },
+            },
+          ],
+        },
+      });
+    }
+  }
 }
 
 export async function updateTransaction(

@@ -17,8 +17,7 @@ function formatAmount(
 ): string {
   const amount =
     referenceCurrency === 'CAD' ? transaction.cadAmount : transaction.usdAmount;
-  const symbol = CURRENCY_SYMBOLS[referenceCurrency];
-  return `${symbol}${amount.toFixed(2)}`;
+  return `${amount.toFixed(2)} ${referenceCurrency}`;
 }
 
 function formatDate(dateString: string): string {
@@ -44,13 +43,28 @@ export default function RecentTransactions({
     setMounted(true);
     setReferenceCurrency(getReferenceCurrency());
 
-    // Listen for storage changes (currency toggle)
+    // Listen for storage changes (currency toggle from other tabs)
     const handleStorage = () => {
       setReferenceCurrency(getReferenceCurrency());
     };
 
+    // Listen for custom currency change event (same window)
+    const handleCurrencyChange = (event: Event) => {
+      const customEvent = event as CustomEvent;
+      if (customEvent.detail?.currency) {
+        setReferenceCurrency(customEvent.detail.currency);
+      } else {
+        setReferenceCurrency(getReferenceCurrency());
+      }
+    };
+
     window.addEventListener('storage', handleStorage);
-    return () => window.removeEventListener('storage', handleStorage);
+    window.addEventListener('currencyChanged', handleCurrencyChange);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorage);
+      window.removeEventListener('currencyChanged', handleCurrencyChange);
+    };
   }, []);
 
   const handleDelete = async (transaction: Transaction) => {
@@ -58,8 +72,14 @@ export default function RecentTransactions({
 
     setIsDeleting(true);
     try {
+      // Get password from sessionStorage for auth
+      const password = sessionStorage.getItem('budget-password') || '';
+      
       const response = await fetch(`/api/transactions?id=${transaction.id}`, {
         method: 'DELETE',
+        headers: {
+          'x-auth-password': password,
+        },
       });
 
       const data = await response.json();
@@ -144,8 +164,7 @@ export default function RecentTransactions({
                 </div>
                 {transaction.currency !== referenceCurrency && (
                   <div className="text-xs text-gray-400">
-                    {CURRENCY_SYMBOLS[transaction.currency]}
-                    {transaction.amount.toFixed(2)}
+                    {transaction.amount.toFixed(2)} {transaction.currency}
                   </div>
                 )}
               </div>

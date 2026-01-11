@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import PasswordProtection from "@/components/PasswordProtection";
 
 export const metadata: Metadata = {
   title: "Budget Tracker",
@@ -34,7 +35,7 @@ export default function RootLayout({
         <link rel="apple-touch-icon" href="/icon-192.png" />
       </head>
       <body className="antialiased safe-area-inset min-h-screen">
-        {children}
+        <PasswordProtection>{children}</PasswordProtection>
       </body>
     </html>
   );

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import CascadingSelect from './CascadingSelect';
 import type {
   Schema,
@@ -44,8 +44,13 @@ export default function TransactionForm({
   const [month, setMonth] = useState(String(today.getMonth() + 1).padStart(2, '0'));
   const [day, setDay] = useState(String(today.getDate()).padStart(2, '0'));
   
-  // Computed transactionDate in YYYY-MM-DD format
-  const transactionDate = `${year}-${month}-${day}`;
+  // Computed transactionDate in YYYY-MM-DD format, ensuring it's always valid
+  const transactionDate = useMemo(() => {
+    const y = year || String(today.getFullYear());
+    const m = month || String(today.getMonth() + 1).padStart(2, '0');
+    const d = day || String(today.getDate()).padStart(2, '0');
+    return `${y.padStart(4, '0')}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+  }, [year, month, day, today]);
   const [table, setTable] = useState('Discretionary');
   const [subcategory, setSubcategory] = useState('Dining');
   const [lineItem, setLineItem] = useState('Restaurants');
@@ -106,6 +111,15 @@ export default function TransactionForm({
   const fetchRates = useCallback(async () => {
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) return;
+
+    // Validate date format before making API call
+    const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+    if (!dateRegex.test(transactionDate)) {
+      console.error('Invalid date format for rate fetch:', transactionDate);
+      setRateError('Invalid date format. Please check year, month, and day.');
+      setManualRates(true);
+      return;
+    }
 
     if (currency === 'CAD') {
       setCadAmount(amount);
@@ -189,7 +203,13 @@ export default function TransactionForm({
       const formData = new FormData();
       formData.append('file', file);
 
+      // Get password from sessionStorage for auth
+      const password = sessionStorage.getItem('budget-password') || '';
+      
       const response = await fetch('/api/upload', {
+        headers: {
+          'x-auth-password': password,
+        },
         method: 'POST',
         body: formData,
       });
@@ -271,7 +291,14 @@ export default function TransactionForm({
     };
 
     try {
+      // Get password from sessionStorage for auth
+      const password = sessionStorage.getItem('budget-password') || '';
+      
       const response = await fetch('/api/transactions', {
+        headers: {
+          'Content-Type': 'application/json',
+          'x-auth-password': password,
+        },
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(transaction),

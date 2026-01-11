@@ -135,6 +135,17 @@ function validateTransaction(data: unknown): TransactionInput | { error: string 
 export async function POST(
   request: NextRequest
 ): Promise<NextResponse<ApiResponse<{ message: string }>>> {
+  // Check authentication
+  const authHeader = request.headers.get('x-auth-password');
+  const APP_PASSWORD = process.env.APP_PASSWORD;
+  
+  if (APP_PASSWORD && authHeader !== APP_PASSWORD) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
     const validation = validateTransaction(body);
@@ -168,6 +179,17 @@ export async function POST(
 export async function PUT(
   request: NextRequest
 ): Promise<NextResponse<ApiResponse<{ message: string }>>> {
+  // Check authentication
+  const authHeader = request.headers.get('x-auth-password');
+  const APP_PASSWORD = process.env.APP_PASSWORD;
+  
+  if (APP_PASSWORD && authHeader !== APP_PASSWORD) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
@@ -219,6 +241,17 @@ export async function PUT(
 export async function DELETE(
   request: NextRequest
 ): Promise<NextResponse<ApiResponse<{ message: string }>>> {
+  // Check authentication
+  const authHeader = request.headers.get('x-auth-password');
+  const APP_PASSWORD = process.env.APP_PASSWORD;
+  
+  if (APP_PASSWORD && authHeader !== APP_PASSWORD) {
+    return NextResponse.json(
+      { success: false, error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
   try {
     const searchParams = request.nextUrl.searchParams;
     const id = searchParams.get('id');
