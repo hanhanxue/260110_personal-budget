@@ -38,7 +38,7 @@ export default function TransactionForm({
   tags,
   onSuccess,
 }: TransactionFormProps) {
-  const [date, setDate] = useState(formatDate(new Date()));
+  const [transactionDate, setTransactionDate] = useState(formatDate(new Date()));
   const [table, setTable] = useState('');
   const [subcategory, setSubcategory] = useState('');
   const [lineItem, setLineItem] = useState('');
@@ -95,7 +95,7 @@ export default function TransactionForm({
 
     try {
       const response = await fetch(
-        `/api/exchange-rate?from=${currency}&date=${date}`
+        `/api/exchange-rate?from=${currency}&date=${transactionDate}`
       );
       const data = await response.json();
 
@@ -120,7 +120,7 @@ export default function TransactionForm({
     } finally {
       setIsFetchingRates(false);
     }
-  }, [amount, currency, date]);
+  }, [amount, currency, transactionDate]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -130,7 +130,7 @@ export default function TransactionForm({
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [amount, currency, date, fetchRates]);
+  }, [amount, currency, transactionDate, fetchRates]);
 
   const handleCadAmountChange = (value: string) => {
     setCadAmount(value);
@@ -312,8 +312,8 @@ export default function TransactionForm({
         <input
           type="date"
           id="date"
-          value={date}
-          onChange={(e) => setDate(e.target.value)}
+          value={transactionDate}
+          onChange={(e) => setTransactionDate(e.target.value)}
           className="form-input"
           style={inputStyle}
           required
