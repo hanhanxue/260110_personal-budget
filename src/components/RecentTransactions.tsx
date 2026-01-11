@@ -124,7 +124,7 @@ export default function RecentTransactions({
                 {transaction.table} &gt; {transaction.subcategory}
               </div>
               <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
-                <span>{formatDate(transaction.date)}</span>
+                <span>{formatDate(transaction.transactionDate)}</span>
                 <span>&bull;</span>
                 <span>{transaction.account}</span>
                 {transaction.tag && (
