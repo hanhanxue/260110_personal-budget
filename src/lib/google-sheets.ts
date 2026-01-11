@@ -8,10 +8,34 @@ if (!SPREADSHEET_ID) {
 }
 
 function getAuth() {
+  const privateKey = process.env.GOOGLE_PRIVATE_KEY;
+  const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
+  
+  if (!privateKey || !clientEmail) {
+    throw new Error('Google credentials environment variables are not configured');
+  }
+
+  // Ensure the private key is properly formatted with newlines
+  // Handle both escaped newlines (\n) and actual newlines
+  // The key from Google's JSON file has \n as literal characters that need to be converted
+  let formattedKey = privateKey.replace(/\\n/g, '\n').trim();
+
+  // Ensure the key starts and ends with proper markers if they're missing
+  if (!formattedKey.includes('BEGIN')) {
+    // If no BEGIN marker, the key might be in a different format
+    // Try to detect and format it properly
+    if (formattedKey.startsWith('-----')) {
+      // Already has markers, just ensure proper formatting
+    } else {
+      // Key might be missing headers - this is unusual but handle it
+      console.warn('Private key may be missing PEM headers');
+    }
+  }
+
   return new google.auth.GoogleAuth({
     credentials: {
-      client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
-      private_key: process.env.GOOGLE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+      client_email: clientEmail,
+      private_key: formattedKey,
     },
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
   });
