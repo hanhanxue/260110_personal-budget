@@ -1,7 +1,11 @@
 import { google } from 'googleapis';
 import type { Schema, SchemaRow, Transaction, TransactionInput, Currency, Period } from './types';
 
-const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID!;
+const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
+
+if (!SPREADSHEET_ID) {
+  console.warn('GOOGLE_SHEETS_ID environment variable is not set');
+}
 
 function getAuth() {
   return new google.auth.GoogleAuth({
@@ -20,6 +24,10 @@ function getSheets() {
 
 // Schema operations
 export async function fetchSchema(): Promise<Schema> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
   const sheets = getSheets();
 
   const response = await sheets.spreadsheets.values.get({
@@ -125,6 +133,10 @@ export async function fetchTransactions(options?: {
   startDate?: string;
   endDate?: string;
 }): Promise<{ transactions: Transaction[]; total: number }> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
   const sheets = getSheets();
 
   const response = await sheets.spreadsheets.values.get({
@@ -157,6 +169,10 @@ export async function fetchTransactions(options?: {
 }
 
 export async function appendTransaction(transaction: TransactionInput): Promise<void> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
   const sheets = getSheets();
 
   const row = transactionToRow(transaction);
@@ -176,6 +192,10 @@ export async function updateTransaction(
   rowIndex: number,
   transaction: TransactionInput
 ): Promise<void> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
   const sheets = getSheets();
 
   const row = transactionToRow(transaction);
@@ -191,6 +211,10 @@ export async function updateTransaction(
 }
 
 export async function deleteTransaction(rowIndex: number): Promise<void> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
   const sheets = getSheets();
 
   // Get sheet ID for Transactions tab
@@ -227,6 +251,10 @@ export async function deleteTransaction(rowIndex: number): Promise<void> {
 
 // Autocomplete helpers
 export async function getUniqueVendors(): Promise<string[]> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
   const sheets = getSheets();
 
   const response = await sheets.spreadsheets.values.get({
@@ -245,6 +273,10 @@ export async function getUniqueVendors(): Promise<string[]> {
 }
 
 export async function getUniqueAccounts(): Promise<string[]> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
   const sheets = getSheets();
 
   const response = await sheets.spreadsheets.values.get({
@@ -268,6 +300,10 @@ export async function getUniqueAccounts(): Promise<string[]> {
 }
 
 export async function getUniqueTags(): Promise<string[]> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
   const sheets = getSheets();
 
   const response = await sheets.spreadsheets.values.get({

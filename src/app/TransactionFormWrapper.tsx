@@ -6,6 +6,9 @@ import {
   getUniqueTags,
 } from '@/lib/google-sheets';
 
+// Force dynamic rendering to prevent build-time API calls
+export const dynamic = 'force-dynamic';
+
 async function getData() {
   const [schema, vendors, accounts, tags] = await Promise.all([
     fetchSchema(),
