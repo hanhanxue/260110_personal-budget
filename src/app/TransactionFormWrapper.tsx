@@ -11,15 +11,16 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 
 async function getData() {
-  // Check if we're in a build environment or if credentials are missing
-  const isBuildTime = process.env.NEXT_PHASE === 'phase-production-build' || 
-                       process.env.VERCEL_ENV === undefined ||
-                       !process.env.GOOGLE_SHEETS_ID || 
-                       !process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || 
-                       !process.env.GOOGLE_PRIVATE_KEY;
+  // Check if credentials are missing (but allow in development)
+  const hasCredentials = process.env.GOOGLE_SHEETS_ID && 
+                         process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && 
+                         process.env.GOOGLE_PRIVATE_KEY;
   
-  if (isBuildTime) {
-    // Return empty data during build to prevent build failures
+  // Only return empty data during actual build phase, not in development
+  const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build';
+  
+  if (isBuildPhase && !hasCredentials) {
+    // Return empty data during build if credentials are missing
     return {
       schema: { tables: [], subcategories: {}, lineItems: {} },
       vendors: [],
@@ -28,12 +29,25 @@ async function getData() {
     };
   }
 
+  // Try to fetch data, but handle errors gracefully
   try {
     const [schema, vendors, accounts, tags] = await Promise.all([
-      fetchSchema().catch(() => ({ tables: [], subcategories: {}, lineItems: {} })),
-      getUniqueVendors().catch(() => []),
-      getUniqueAccounts().catch(() => []),
-      getUniqueTags().catch(() => []),
+      fetchSchema().catch((err) => {
+        console.error('Error fetching schema:', err);
+        return { tables: [], subcategories: {}, lineItems: {} };
+      }),
+      getUniqueVendors().catch((err) => {
+        console.error('Error fetching vendors:', err);
+        return [];
+      }),
+      getUniqueAccounts().catch((err) => {
+        console.error('Error fetching accounts:', err);
+        return [];
+      }),
+      getUniqueTags().catch((err) => {
+        console.error('Error fetching tags:', err);
+        return [];
+      }),
     ]);
 
     return { schema, vendors, accounts, tags };

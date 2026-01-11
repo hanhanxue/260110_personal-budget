@@ -38,7 +38,14 @@ export default function TransactionForm({
   tags,
   onSuccess,
 }: TransactionFormProps) {
-  const [transactionDate, setTransactionDate] = useState(formatDate(new Date()));
+  // Initialize with current date
+  const today = new Date();
+  const [year, setYear] = useState(String(today.getFullYear()));
+  const [month, setMonth] = useState(String(today.getMonth() + 1).padStart(2, '0'));
+  const [day, setDay] = useState(String(today.getDate()).padStart(2, '0'));
+  
+  // Computed transactionDate in YYYY-MM-DD format
+  const transactionDate = `${year}-${month}-${day}`;
   const [table, setTable] = useState('Discretionary');
   const [subcategory, setSubcategory] = useState('Dining');
   const [lineItem, setLineItem] = useState('Restaurants');
@@ -73,7 +80,28 @@ export default function TransactionForm({
     setCurrency(getLastUsedCurrency());
     const savedAccount = getLastUsedAccount();
     setAccount(savedAccount || 'RBC Visa');
-  }, []);
+    
+    // Ensure defaults are valid when schema loads
+    if (schema.tables.length > 0 && !schema.tables.includes(table)) {
+      // If default table doesn't exist, use first available
+      setTable(schema.tables[0]);
+      setSubcategory('');
+      setLineItem('');
+    } else if (schema.tables.includes('Discretionary')) {
+      // If Discretionary exists, ensure subcategory and lineItem are valid
+      const discretionarySubcats = schema.subcategories['Discretionary'] || [];
+      if (table === 'Discretionary' && subcategory === 'Dining' && !discretionarySubcats.includes('Dining')) {
+        setSubcategory(discretionarySubcats[0] || '');
+        setLineItem('');
+      } else if (table === 'Discretionary' && subcategory === 'Dining') {
+        const lineItemKey = 'Discretionary|Dining';
+        const diningLineItems = schema.lineItems[lineItemKey] || [];
+        if (lineItem === 'Restaurants' && !diningLineItems.includes('Restaurants')) {
+          setLineItem(diningLineItems[0] || '');
+        }
+      }
+    }
+  }, [schema]);
 
   const fetchRates = useCallback(async () => {
     const numAmount = parseFloat(amount);
@@ -258,7 +286,11 @@ export default function TransactionForm({
       setLastUsedCurrency(currency);
       setLastUsedAccount(account);
 
-      setTransactionDate(formatDate(new Date()));
+      // Reset date to current day
+      const resetDate = new Date();
+      setYear(String(resetDate.getFullYear()));
+      setMonth(String(resetDate.getMonth() + 1).padStart(2, '0'));
+      setDay(String(resetDate.getDate()).padStart(2, '0'));
       setTable('Discretionary');
       setSubcategory('Dining');
       setLineItem('Restaurants');
@@ -359,48 +391,116 @@ export default function TransactionForm({
       </div>
 
       <div className="form-group">
-        <label htmlFor="date" className="form-label">
-          Transaction Date * (YYYY-MM-DD)
+        <label className="form-label">
+          Transaction Date *
         </label>
-        <input
-          type="text"
-          id="date"
-          value={transactionDate}
-          onChange={(e) => {
-            const value = e.target.value;
-            // Allow only digits and hyphens, and format as user types
-            const cleaned = value.replace(/[^\d-]/g, '');
-            // Limit to YYYY-MM-DD format
-            if (cleaned.length <= 10) {
-              let formatted = cleaned;
-              // Auto-insert hyphens
-              if (cleaned.length > 4 && cleaned[4] !== '-') {
-                formatted = cleaned.slice(0, 4) + '-' + cleaned.slice(4);
-              }
-              if (cleaned.length > 7 && formatted[7] !== '-') {
-                formatted = formatted.slice(0, 7) + '-' + formatted.slice(7);
-              }
-              setTransactionDate(formatted);
-            }
-          }}
-          onBlur={(e) => {
-            // Validate and fix format on blur
-            const value = e.target.value;
-            const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-            if (value && !dateRegex.test(value)) {
-              // Try to parse and reformat
-              const date = new Date(value);
-              if (!isNaN(date.getTime())) {
-                setTransactionDate(formatDate(date));
-              }
-            }
-          }}
-          placeholder="2026-01-11"
-          pattern="\d{4}-\d{2}-\d{2}"
-          className="form-input"
-          style={inputStyle}
-          required
-        />
+        <div className="grid grid-cols-3 gap-2">
+          <div>
+            <label htmlFor="year" className="text-xs text-gray-500 block mb-1">
+              Year (YYYY)
+            </label>
+            <input
+              type="number"
+              id="year"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={year}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^\d]/g, '');
+                if (value.length <= 4) {
+                  setYear(value || String(today.getFullYear()));
+                }
+              }}
+              onBlur={(e) => {
+                const value = e.target.value;
+                if (!value || parseInt(value) < 2000 || parseInt(value) > 2100) {
+                  setYear(String(today.getFullYear()));
+                } else {
+                  setYear(value.padStart(4, '0'));
+                }
+              }}
+              className="form-input"
+              style={inputStyle}
+              placeholder="2026"
+              min="2000"
+              max="2100"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="month" className="text-xs text-gray-500 block mb-1">
+              Month (MM)
+            </label>
+            <input
+              type="number"
+              id="month"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={month}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^\d]/g, '');
+                if (value.length <= 2) {
+                  let monthValue = value;
+                  if (monthValue && (parseInt(monthValue) < 1 || parseInt(monthValue) > 12)) {
+                    monthValue = String(today.getMonth() + 1);
+                  }
+                  setMonth(monthValue || String(today.getMonth() + 1).padStart(2, '0'));
+                }
+              }}
+              onBlur={(e) => {
+                const value = e.target.value;
+                let monthValue = parseInt(value) || today.getMonth() + 1;
+                if (monthValue < 1) monthValue = 1;
+                if (monthValue > 12) monthValue = 12;
+                setMonth(String(monthValue).padStart(2, '0'));
+              }}
+              className="form-input"
+              style={inputStyle}
+              placeholder="01"
+              min="1"
+              max="12"
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="day" className="text-xs text-gray-500 block mb-1">
+              Day (DD)
+            </label>
+            <input
+              type="number"
+              id="day"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={day}
+              onChange={(e) => {
+                const value = e.target.value.replace(/[^\d]/g, '');
+                if (value.length <= 2) {
+                  let dayValue = value;
+                  if (dayValue && (parseInt(dayValue) < 1 || parseInt(dayValue) > 31)) {
+                    dayValue = String(today.getDate());
+                  }
+                  setDay(dayValue || String(today.getDate()).padStart(2, '0'));
+                }
+              }}
+              onBlur={(e) => {
+                const value = e.target.value;
+                const monthValue = parseInt(month) || today.getMonth() + 1;
+                const yearValue = parseInt(year) || today.getFullYear();
+                const daysInMonth = new Date(yearValue, monthValue, 0).getDate();
+                let dayValue = parseInt(value) || today.getDate();
+                if (dayValue < 1) dayValue = 1;
+                if (dayValue > daysInMonth) dayValue = daysInMonth;
+                setDay(String(dayValue).padStart(2, '0'));
+              }}
+              className="form-input"
+              style={inputStyle}
+              placeholder="11"
+              min="1"
+              max="31"
+              required
+            />
+          </div>
+        </div>
       </div>
 
       <CascadingSelect
