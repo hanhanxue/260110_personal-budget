@@ -76,7 +76,7 @@ const TRANSACTION_COLUMNS = [
 function rowToTransaction(row: string[], index: number): Transaction {
   return {
     id: String(index + 2), // Row number (1-indexed, +1 for header)
-    date: row[0] || '',
+    transactionDate: row[0] || '',
     table: row[1] || '',
     subcategory: row[2] || '',
     lineItem: row[3] || '',
@@ -99,7 +99,7 @@ function rowToTransaction(row: string[], index: number): Transaction {
 
 function transactionToRow(transaction: TransactionInput): string[] {
   return [
-    transaction.date,
+    transaction.transactionDate,
     transaction.table,
     transaction.subcategory,
     transaction.lineItem,
@@ -137,16 +137,16 @@ export async function fetchTransactions(options?: {
 
   // Filter by date range
   if (options?.startDate) {
-    transactions = transactions.filter(t => t.date >= options.startDate!);
+    transactions = transactions.filter(t => t.transactionDate >= options.startDate!);
   }
   if (options?.endDate) {
-    transactions = transactions.filter(t => t.date <= options.endDate!);
+    transactions = transactions.filter(t => t.transactionDate <= options.endDate!);
   }
 
   const total = transactions.length;
 
   // Sort by date descending (most recent first)
-  transactions.sort((a, b) => b.date.localeCompare(a.date));
+  transactions.sort((a, b) => b.transactionDate.localeCompare(a.transactionDate));
 
   // Limit results
   if (options?.limit) {
