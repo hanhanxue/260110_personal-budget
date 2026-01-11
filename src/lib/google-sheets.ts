@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { Schema, SchemaRow, Transaction, TransactionInput, Currency, Period } from './types';
+import type { Schema, SchemaRow, Transaction, TransactionInput, Currency, Distribute } from './types';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
 
@@ -117,7 +117,7 @@ export async function fetchSchema(): Promise<Schema> {
 const TRANSACTION_COLUMNS = [
   'Transaction Date', 'Table', 'Subcategory', 'Line Item', 'Amount', 'Currency',
   'CAD Amount', 'CAD Rate', 'USD Amount', 'USD Rate', 'Vendor', 'Note',
-  'Receipt URL', 'Account', 'Period', 'Distribute', 'Tag', 'Submitted At'
+  'Receipt URL', 'Account', 'Distribute', 'Tag', 'Submitted At'
 ];
 
 function rowToTransaction(row: string[], index: number): Transaction {
@@ -137,10 +137,9 @@ function rowToTransaction(row: string[], index: number): Transaction {
     note: row[11] || undefined,
     receiptUrl: row[12] || undefined,
     account: row[13] || '',
-    period: (row[14] as Period) || 'one-time',
-    distribute: row[15]?.toUpperCase() === 'TRUE',
-    tag: row[16] || undefined,
-    submittedAt: row[17] || '',
+    distribute: (row[14] as Distribute) || 'one-time',
+    tag: row[15] || undefined,
+    submittedAt: row[16] || '',
   };
 }
 
@@ -173,8 +172,7 @@ function transactionToRow(transaction: TransactionInput): (string | number)[] {
     transaction.note || '',
     transaction.receiptUrl || '',
     transaction.account,
-    transaction.period,
-    transaction.distribute ? 'TRUE' : 'FALSE',
+    transaction.distribute,
     transaction.tag || '',
     transaction.submittedAt,
   ];
@@ -193,7 +191,7 @@ export async function fetchTransactions(options?: {
 
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'Transactions!A2:R', // Skip header row
+    range: 'Transactions!A2:Q', // Skip header row
   });
 
   const rows = response.data.values || [];
@@ -232,7 +230,7 @@ export async function appendTransaction(transaction: TransactionInput): Promise<
   // Append the row
   const appendResponse = await sheets.spreadsheets.values.append({
     spreadsheetId: SPREADSHEET_ID,
-    range: 'Transactions!A:R',
+    range: 'Transactions!A:Q',
     valueInputOption: 'USER_ENTERED',
     insertDataOption: 'INSERT_ROWS',
     requestBody: {
@@ -309,7 +307,7 @@ export async function updateTransaction(
 
   await sheets.spreadsheets.values.update({
     spreadsheetId: SPREADSHEET_ID,
-    range: `Transactions!A${rowIndex}:R${rowIndex}`,
+    range: `Transactions!A${rowIndex}:Q${rowIndex}`,
     valueInputOption: 'USER_ENTERED',
     requestBody: {
       values: [row],

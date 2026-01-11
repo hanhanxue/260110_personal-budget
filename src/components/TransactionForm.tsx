@@ -1,15 +1,15 @@
 'use client';
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import CascadingSelect from './CascadingSelect';
+import CascadingSelect, { LineItemSelect } from './CascadingSelect';
 import type {
   Schema,
   Currency,
-  Period,
+  Distribute,
   TransactionInput,
   ExchangeRates,
 } from '@/lib/types';
-import { CURRENCIES, CURRENCY_SYMBOLS, PERIODS } from '@/lib/types';
+import { CURRENCIES, CURRENCY_SYMBOLS, DISTRIBUTE_OPTIONS } from '@/lib/types';
 import {
   getLastUsedCurrency,
   setLastUsedCurrency,
@@ -64,8 +64,7 @@ export default function TransactionForm({
   const [note, setNote] = useState('');
   const [receiptUrl, setReceiptUrl] = useState('');
   const [account, setAccount] = useState('RBC Visa');
-  const [period, setPeriod] = useState<Period>('one-time');
-  const [distribute, setDistribute] = useState(false);
+  const [distribute, setDistribute] = useState<Distribute>('one-time');
   const [tag, setTag] = useState('');
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -284,7 +283,6 @@ export default function TransactionForm({
       note: note || undefined,
       receiptUrl: receiptUrl || undefined,
       account,
-      period,
       distribute,
       tag: tag || undefined,
       submittedAt: new Date().toISOString(),
@@ -329,8 +327,7 @@ export default function TransactionForm({
       setNote('');
       setReceiptUrl('');
       setTag('');
-      setDistribute(false);
-      setPeriod('one-time');
+      setDistribute('one-time');
       // Note: account is preserved via setLastUsedAccount above, so it will be set from preferences
 
       setSubmitSuccess(true);
@@ -362,7 +359,7 @@ export default function TransactionForm({
       )}
 
       <div className="grid grid-cols-3 gap-3">
-        <div className="col-span-2 form-group">
+        <div className="col-span-1 form-group">
           <label htmlFor="amount" className="form-label">
             Amount *
           </label>
@@ -410,6 +407,27 @@ export default function TransactionForm({
             {CURRENCIES.map((c) => (
               <option key={c} value={c}>
                 {c}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-group">
+          <label htmlFor="distribute" className="form-label">
+            Distribute
+          </label>
+          <select
+            id="distribute"
+            value={distribute}
+            onChange={(e) => setDistribute(e.target.value as Distribute)}
+            className="form-input"
+            style={inputStyle}
+          >
+            {DISTRIBUTE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option === 'one-time' ? 'One-time' : 
+                 option === 'per month' ? 'Per month (÷12)' :
+                 option === 'quarterly' ? 'Quarterly (÷4)' :
+                 'Semi-annual (÷2)'}
               </option>
             ))}
           </select>
@@ -540,6 +558,37 @@ export default function TransactionForm({
         disabled={isSubmitting}
       />
 
+      <div className="grid grid-cols-2 gap-3">
+        <LineItemSelect
+          schema={schema}
+          table={table}
+          subcategory={subcategory}
+          lineItem={lineItem}
+          onLineItemChange={setLineItem}
+          disabled={isSubmitting}
+        />
+
+        <div className="form-group">
+          <label htmlFor="account" className="form-label">
+            Account *
+          </label>
+          <select
+            id="account"
+            value={account}
+            onChange={(e) => setAccount(e.target.value)}
+            className="form-input"
+            style={inputStyle}
+            required
+          >
+            <option value="">Select account...</option>
+            <option value="RBC Visa">RBC Visa</option>
+            <option value="RBC Checking">RBC Checking</option>
+            <option value="BMO Checking">BMO Checking</option>
+            <option value="Chase Total Checking">Chase Total Checking</option>
+          </select>
+        </div>
+      </div>
+
       {amount && parseFloat(amount) > 0 && (
         <div className="p-4 bg-gray-50 rounded-lg space-y-3">
           <div className="flex items-center justify-between">
@@ -590,58 +639,74 @@ export default function TransactionForm({
         </div>
       )}
 
-      <div className="form-group relative">
-        <label htmlFor="vendor" className="form-label">
-          Vendor
-        </label>
-        <input
-          type="text"
-          id="vendor"
-          value={vendor}
-          onChange={(e) => setVendor(e.target.value)}
-          onFocus={() => setShowVendorSuggestions(true)}
-          onBlur={() => setTimeout(() => setShowVendorSuggestions(false), 200)}
-          className="form-input"
-          style={inputStyle}
-          placeholder="Where did you spend?"
-          autoComplete="off"
-        />
-        {showVendorSuggestions && filteredVendors.length > 0 && (
-          <ul className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-            {filteredVendors.slice(0, 5).map((v) => (
-              <li
-                key={v}
-                onClick={() => {
-                  setVendor(v);
-                  setShowVendorSuggestions(false);
-                }}
-                className="px-4 py-2 cursor-pointer hover:bg-gray-100 text-black"
-              >
-                {v}
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="form-group relative">
+          <label htmlFor="vendor" className="form-label">
+            Vendor
+          </label>
+          <input
+            type="text"
+            id="vendor"
+            value={vendor}
+            onChange={(e) => setVendor(e.target.value)}
+            onFocus={() => setShowVendorSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowVendorSuggestions(false), 200)}
+            className="form-input"
+            style={inputStyle}
+            placeholder="Where did you spend?"
+            autoComplete="off"
+          />
+          {showVendorSuggestions && filteredVendors.length > 0 && (
+            <ul className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+              {filteredVendors.slice(0, 5).map((v) => (
+                <li
+                  key={v}
+                  onClick={() => {
+                    setVendor(v);
+                    setShowVendorSuggestions(false);
+                  }}
+                  className="px-4 py-2 cursor-pointer hover:bg-gray-100 text-black"
+                >
+                  {v}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
 
-      <div className="form-group">
-        <label htmlFor="account" className="form-label">
-          Account *
-        </label>
-        <select
-          id="account"
-          value={account}
-          onChange={(e) => setAccount(e.target.value)}
-          className="form-input"
-          style={inputStyle}
-          required
-        >
-          <option value="">Select account...</option>
-          <option value="RBC Visa">RBC Visa</option>
-          <option value="RBC Checking">RBC Checking</option>
-          <option value="BMO Checking">BMO Checking</option>
-          <option value="Chase Total Checking">Chase Total Checking</option>
-        </select>
+        <div className="form-group relative">
+          <label htmlFor="tag" className="form-label">
+            Tag
+          </label>
+          <input
+            type="text"
+            id="tag"
+            value={tag}
+            onChange={(e) => setTag(e.target.value)}
+            onFocus={() => setShowTagSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
+            className="form-input"
+            style={inputStyle}
+            placeholder="Trip name, project, etc."
+            autoComplete="off"
+          />
+          {showTagSuggestions && filteredTags.length > 0 && (
+            <ul className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
+              {filteredTags.slice(0, 5).map((t) => (
+                <li
+                  key={t}
+                  onClick={() => {
+                    setTag(t);
+                    setShowTagSuggestions(false);
+                  }}
+                  className="px-4 py-2 cursor-pointer hover:bg-gray-100 text-black"
+                >
+                  {t}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
       </div>
 
       <div className="form-group">
@@ -688,74 +753,6 @@ export default function TransactionForm({
           >
             {isUploading ? 'Uploading...' : 'Add Receipt Photo'}
           </button>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div className="form-group">
-          <label htmlFor="period" className="form-label">
-            Period
-          </label>
-          <select
-            id="period"
-            value={period}
-            onChange={(e) => setPeriod(e.target.value as Period)}
-            className="form-input"
-            style={inputStyle}
-          >
-            {PERIODS.map((p) => (
-              <option key={p} value={p}>
-                {p}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-group flex items-end">
-          <label className="flex items-center gap-2 cursor-pointer py-3">
-            <input
-              type="checkbox"
-              checked={distribute}
-              onChange={(e) => setDistribute(e.target.checked)}
-              className="w-5 h-5 rounded border-gray-300"
-            />
-            <span className="text-sm font-medium text-gray-700">
-              Distribute
-            </span>
-          </label>
-        </div>
-      </div>
-
-      <div className="form-group relative">
-        <label htmlFor="tag" className="form-label">
-          Tag
-        </label>
-        <input
-          type="text"
-          id="tag"
-          value={tag}
-          onChange={(e) => setTag(e.target.value)}
-          onFocus={() => setShowTagSuggestions(true)}
-          onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
-          className="form-input"
-          style={inputStyle}
-          placeholder="Trip name, project, etc."
-          autoComplete="off"
-        />
-        {showTagSuggestions && filteredTags.length > 0 && (
-          <ul className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-lg shadow-lg max-h-40 overflow-y-auto">
-            {filteredTags.slice(0, 5).map((t) => (
-              <li
-                key={t}
-                onClick={() => {
-                  setTag(t);
-                  setShowTagSuggestions(false);
-                }}
-                className="px-4 py-2 cursor-pointer hover:bg-gray-100 text-black"
-              >
-                {t}
-              </li>
-            ))}
-          </ul>
         )}
       </div>
 

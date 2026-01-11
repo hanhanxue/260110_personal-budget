@@ -10,9 +10,9 @@ import type {
   TransactionsListResponse,
   TransactionInput,
   Currency,
-  Period,
+  Distribute,
 } from '@/lib/types';
-import { CURRENCIES, PERIODS } from '@/lib/types';
+import { CURRENCIES, DISTRIBUTE_OPTIONS } from '@/lib/types';
 
 export async function GET(
   request: NextRequest
@@ -98,12 +98,8 @@ function validateTransaction(data: unknown): TransactionInput | { error: string 
     return { error: 'Account is required' };
   }
 
-  if (!t.period || !PERIODS.includes(t.period as Period)) {
-    return { error: `Period must be one of: ${PERIODS.join(', ')}` };
-  }
-
-  if (typeof t.distribute !== 'boolean') {
-    return { error: 'Distribute must be a boolean' };
+  if (!t.distribute || !DISTRIBUTE_OPTIONS.includes(t.distribute as Distribute)) {
+    return { error: `Distribute must be one of: ${DISTRIBUTE_OPTIONS.join(', ')}` };
   }
 
   if (!t.submittedAt || typeof t.submittedAt !== 'string') {
@@ -125,8 +121,7 @@ function validateTransaction(data: unknown): TransactionInput | { error: string 
     note: typeof t.note === 'string' ? t.note : undefined,
     receiptUrl: typeof t.receiptUrl === 'string' ? t.receiptUrl : undefined,
     account: t.account,
-    period: t.period as Period,
-    distribute: t.distribute,
+    distribute: t.distribute as Distribute,
     tag: typeof t.tag === 'string' ? t.tag : undefined,
     submittedAt: t.submittedAt,
   };

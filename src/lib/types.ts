@@ -26,10 +26,10 @@ export const CURRENCY_SYMBOLS: Record<Currency, string> = {
   GBP: '£',
 };
 
-// Period types
-export type Period = 'one-time' | 'monthly' | 'quarterly' | 'yearly';
+// Distribution types
+export type Distribute = 'one-time' | 'per month' | 'quarterly' | 'semi-annual';
 
-export const PERIODS: Period[] = ['one-time', 'monthly', 'quarterly', 'yearly'];
+export const DISTRIBUTE_OPTIONS: Distribute[] = ['one-time', 'per month', 'quarterly', 'semi-annual'];
 
 // Transaction types
 export interface Transaction {
@@ -48,8 +48,7 @@ export interface Transaction {
   note?: string;
   receiptUrl?: string;
   account: string;
-  period: Period;
-  distribute: boolean;
+  distribute: Distribute;
   tag?: string;
   submittedAt: string; // ISO timestamp when transaction was submitted
 }
@@ -69,8 +68,7 @@ export interface TransactionInput {
   note?: string;
   receiptUrl?: string;
   account: string;
-  period: Period;
-  distribute: boolean;
+  distribute: Distribute;
   tag?: string;
   submittedAt: string;
 }
