@@ -1,5 +1,5 @@
 import { google } from 'googleapis';
-import type { Schema, SchemaRow, Transaction, TransactionInput, Currency, Distribute } from './types';
+import type { Schema, SchemaRow, Transaction, TransactionInput, Currency, Distribute, Defaults } from './types';
 
 const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
 
@@ -399,7 +399,56 @@ export async function getUniqueVendors(): Promise<string[]> {
   return Array.from(vendors).sort();
 }
 
+// Fetch accounts from Accounts sheet (similar to Schema)
+export async function fetchAccounts(): Promise<string[]> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
+  try {
+    const sheets = getSheets();
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Accounts!A2:B', // Account name and Active status
+    });
+
+    const rows = response.data.values || [];
+    const accounts: string[] = [];
+
+    for (const row of rows) {
+      const [accountName, active] = row;
+
+      // Skip if no account name
+      if (!accountName) continue;
+
+      // If there's an Active column, only include active accounts
+      // If no Active column, include all accounts
+      if (active !== undefined && active?.toUpperCase() !== 'TRUE') {
+        continue;
+      }
+
+      accounts.push(accountName);
+    }
+
+    return accounts; // Return in the order they appear in the sheet
+  } catch (error) {
+    console.error('Error fetching accounts from Accounts sheet:', error);
+    // Fallback to empty array if Accounts sheet doesn't exist
+    return [];
+  }
+}
+
 export async function getUniqueAccounts(): Promise<string[]> {
+  // First try to fetch from Accounts sheet
+  const accountsFromSheet = await fetchAccounts();
+  
+  // If we got accounts from the sheet, use those
+  if (accountsFromSheet.length > 0) {
+    return accountsFromSheet;
+  }
+
+  // Fallback: fetch from Transactions column (for backward compatibility)
   if (!SPREADSHEET_ID) {
     throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
   }
@@ -414,10 +463,11 @@ export async function getUniqueAccounts(): Promise<string[]> {
   const values = response.data.values || [];
   const accounts = new Set<string>();
 
-  // Add default accounts
+  // Add default accounts as fallback
   accounts.add('RBC Visa');
-  accounts.add('RBC Chequing');
-  accounts.add('Chase Chequing');
+  accounts.add('RBC Checking');
+  accounts.add('BMO Checking');
+  accounts.add('Chase Total Checking');
 
   for (const row of values) {
     if (row[0]) accounts.add(row[0]);
@@ -446,4 +496,46 @@ export async function getUniqueTags(): Promise<string[]> {
   }
 
   return Array.from(tags).sort();
+}
+
+// Fetch defaults from Defaults sheet
+export async function fetchDefaults(): Promise<Defaults> {
+  if (!SPREADSHEET_ID) {
+    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
+  }
+
+  try {
+    const sheets = getSheets();
+
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId: SPREADSHEET_ID,
+      range: 'Defaults!A2:D', // Line Item, Vendor, Tag, Active
+    });
+
+    const rows = response.data.values || [];
+    const defaults: Defaults = {};
+
+    for (const row of rows) {
+      const [lineItem, vendor, tag, active] = row;
+
+      // Skip if no line item
+      if (!lineItem) continue;
+
+      // Skip inactive items
+      if (active !== undefined && active?.toUpperCase() !== 'TRUE') {
+        continue;
+      }
+
+      // Store defaults for this line item
+      defaults[lineItem] = {};
+      if (vendor) defaults[lineItem].vendor = vendor;
+      if (tag) defaults[lineItem].tag = tag;
+    }
+
+    return defaults;
+  } catch (error) {
+    console.error('Error fetching defaults from Defaults sheet:', error);
+    // Return empty defaults if sheet doesn't exist
+    return {};
+  }
 }

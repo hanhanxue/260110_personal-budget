@@ -8,6 +8,7 @@ import type {
   Distribute,
   TransactionInput,
   ExchangeRates,
+  Defaults,
 } from '@/lib/types';
 import { CURRENCIES, CURRENCY_SYMBOLS, DISTRIBUTE_OPTIONS } from '@/lib/types';
 import {
@@ -22,6 +23,7 @@ interface TransactionFormProps {
   vendors: string[];
   accounts: string[];
   tags: string[];
+  defaults: Defaults;
   onSuccess?: () => void;
 }
 
@@ -36,6 +38,7 @@ export default function TransactionForm({
   vendors,
   accounts,
   tags,
+  defaults,
   onSuccess,
 }: TransactionFormProps) {
   // Initialize with current date
@@ -83,7 +86,13 @@ export default function TransactionForm({
   useEffect(() => {
     setCurrency(getLastUsedCurrency());
     const savedAccount = getLastUsedAccount();
-    setAccount(savedAccount || 'RBC Visa');
+    // Use saved account if valid, otherwise use first available account or default
+    const defaultAccount = savedAccount && accounts.includes(savedAccount) 
+      ? savedAccount 
+      : accounts.length > 0 
+        ? accounts[0] 
+        : 'RBC Visa';
+    setAccount(defaultAccount);
     
     // Ensure defaults are valid when schema loads
     if (schema.tables.length > 0 && !schema.tables.includes(table)) {
@@ -105,7 +114,36 @@ export default function TransactionForm({
         }
       }
     }
-  }, [schema]);
+  }, [schema, accounts]);
+
+  // Apply defaults when lineItem changes
+  useEffect(() => {
+    if (lineItem && defaults[lineItem]) {
+      const lineItemDefaults = defaults[lineItem];
+      
+      // Auto-fill vendor if default exists (only if currently empty)
+      if (lineItemDefaults.vendor && !vendor) {
+        setVendor(lineItemDefaults.vendor);
+      }
+      
+      // Auto-fill tag if default exists (only if currently empty)
+      if (lineItemDefaults.tag && !tag) {
+        setTag(lineItemDefaults.tag);
+      }
+      
+      // Auto-fill account if default exists (only if currently empty)
+      if (lineItemDefaults.account && !account) {
+        setAccount(lineItemDefaults.account);
+        setLastUsedAccount(lineItemDefaults.account);
+      }
+      
+      // Auto-fill note if default exists (only if currently empty)
+      if (lineItemDefaults.note && !note) {
+        setNote(lineItemDefaults.note);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lineItem]); // Only re-run when lineItem changes
 
   const fetchRates = useCallback(async () => {
     const numAmount = parseFloat(amount);
@@ -452,7 +490,7 @@ export default function TransactionForm({
               onChange={(e) => {
                 const value = e.target.value.replace(/[^\d]/g, '');
                 if (value.length <= 4) {
-                  setYear(value || String(today.getFullYear()));
+                  setYear(value); // Allow empty string while typing
                 }
               }}
               onBlur={(e) => {
@@ -484,11 +522,7 @@ export default function TransactionForm({
               onChange={(e) => {
                 const value = e.target.value.replace(/[^\d]/g, '');
                 if (value.length <= 2) {
-                  let monthValue = value;
-                  if (monthValue && (parseInt(monthValue) < 1 || parseInt(monthValue) > 12)) {
-                    monthValue = String(today.getMonth() + 1);
-                  }
-                  setMonth(monthValue || String(today.getMonth() + 1).padStart(2, '0'));
+                  setMonth(value); // Allow empty string while typing
                 }
               }}
               onBlur={(e) => {
@@ -519,11 +553,7 @@ export default function TransactionForm({
               onChange={(e) => {
                 const value = e.target.value.replace(/[^\d]/g, '');
                 if (value.length <= 2) {
-                  let dayValue = value;
-                  if (dayValue && (parseInt(dayValue) < 1 || parseInt(dayValue) > 31)) {
-                    dayValue = String(today.getDate());
-                  }
-                  setDay(dayValue || String(today.getDate()).padStart(2, '0'));
+                  setDay(value); // Allow empty string while typing
                 }
               }}
               onBlur={(e) => {
@@ -575,16 +605,20 @@ export default function TransactionForm({
           <select
             id="account"
             value={account}
-            onChange={(e) => setAccount(e.target.value)}
+            onChange={(e) => {
+              setAccount(e.target.value);
+              setLastUsedAccount(e.target.value);
+            }}
             className="form-input"
             style={inputStyle}
             required
           >
             <option value="">Select account...</option>
-            <option value="RBC Visa">RBC Visa</option>
-            <option value="RBC Checking">RBC Checking</option>
-            <option value="BMO Checking">BMO Checking</option>
-            <option value="Chase Total Checking">Chase Total Checking</option>
+            {accounts.map((acc) => (
+              <option key={acc} value={acc}>
+                {acc}
+              </option>
+            ))}
           </select>
         </div>
       </div>

@@ -4,6 +4,7 @@ import {
   getUniqueVendors,
   getUniqueAccounts,
   getUniqueTags,
+  fetchDefaults,
 } from '@/lib/google-sheets';
 
 // Force dynamic rendering to prevent build-time API calls
@@ -26,12 +27,13 @@ async function getData() {
       vendors: [],
       accounts: [],
       tags: [],
+      defaults: {},
     };
   }
 
   // Try to fetch data, but handle errors gracefully
   try {
-    const [schema, vendors, accounts, tags] = await Promise.all([
+    const [schema, vendors, accounts, tags, defaults] = await Promise.all([
       fetchSchema().catch((err) => {
         console.error('Error fetching schema:', err);
         return { tables: [], subcategories: {}, lineItems: {} };
@@ -48,9 +50,13 @@ async function getData() {
         console.error('Error fetching tags:', err);
         return [];
       }),
+      fetchDefaults().catch((err) => {
+        console.error('Error fetching defaults:', err);
+        return {};
+      }),
     ]);
 
-    return { schema, vendors, accounts, tags };
+    return { schema, vendors, accounts, tags, defaults };
   } catch (error) {
     console.error('Error fetching data:', error);
     // Return empty data on error to prevent build/runtime failure
@@ -60,12 +66,13 @@ async function getData() {
       vendors: [],
       accounts: [],
       tags: [],
+      defaults: {},
     };
   }
 }
 
 export default async function TransactionFormWrapper() {
-  const { schema, vendors, accounts, tags } = await getData();
+  const { schema, vendors, accounts, tags, defaults } = await getData();
 
   return (
     <TransactionForm
@@ -73,6 +80,7 @@ export default async function TransactionFormWrapper() {
       vendors={vendors}
       accounts={accounts}
       tags={tags}
+      defaults={defaults}
     />
   );
 }

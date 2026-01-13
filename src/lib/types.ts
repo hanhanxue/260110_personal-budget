@@ -113,3 +113,15 @@ export interface TransactionsListResponse {
 export interface AutocompleteResponse {
   values: string[];
 }
+
+// Defaults types
+export interface FieldDefaults {
+  vendor?: string;
+  tag?: string;
+  account?: string;
+  note?: string;
+}
+
+export interface Defaults {
+  [lineItem: string]: FieldDefaults;
+}

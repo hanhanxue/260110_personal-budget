@@ -42,12 +42,12 @@ export default function PasswordProtection({ children }: PasswordProtectionProps
         setIsAuthenticated(true);
         setPassword('');
       } else {
-        setError(data.error || 'Incorrect password');
+        setError(data.error || 'Incorrect PIN');
         setPassword('');
       }
     } catch (error) {
       console.error('Auth error:', error);
-      setError('Failed to verify password. Please try again.');
+      setError('Failed to verify PIN. Please try again.');
       setPassword('');
     }
   };
@@ -69,7 +69,7 @@ export default function PasswordProtection({ children }: PasswordProtectionProps
               Budget Tracker
             </h2>
             <p className="text-sm text-gray-600 mb-4">
-              Please enter your password to continue
+              Please enter your PIN to continue
             </p>
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
@@ -81,10 +81,16 @@ export default function PasswordProtection({ children }: PasswordProtectionProps
                 <input
                   type="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => {
+                    // Only allow numeric input
+                    const value = e.target.value.replace(/[^\d]/g, '');
+                    setPassword(value);
+                  }}
+                  inputMode="numeric"
+                  pattern="[0-9]*"
                   className="w-full px-4 py-3 text-base rounded-lg border border-gray-300 
                            focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                  placeholder="Enter password"
+                  placeholder="Enter PIN"
                   autoFocus
                   required
                 />
