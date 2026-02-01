@@ -524,7 +524,7 @@ export default function TransactionForm({
               onChange={(e) => {
                 const value = e.target.value.replace(/[^\d]/g, '');
                 if (value.length <= 4) {
-                  setYear(value || String(today.getFullYear()));
+                  setYear(value);
                 }
               }}
               onBlur={(e) => {
@@ -556,11 +556,7 @@ export default function TransactionForm({
               onChange={(e) => {
                 const value = e.target.value.replace(/[^\d]/g, '');
                 if (value.length <= 2) {
-                  let monthValue = value;
-                  if (monthValue && (parseInt(monthValue) < 1 || parseInt(monthValue) > 12)) {
-                    monthValue = String(today.getMonth() + 1);
-                  }
-                  setMonth(monthValue || String(today.getMonth() + 1).padStart(2, '0'));
+                  setMonth(value);
                 }
               }}
               onBlur={(e) => {
@@ -591,11 +587,7 @@ export default function TransactionForm({
               onChange={(e) => {
                 const value = e.target.value.replace(/[^\d]/g, '');
                 if (value.length <= 2) {
-                  let dayValue = value;
-                  if (dayValue && (parseInt(dayValue) < 1 || parseInt(dayValue) > 31)) {
-                    dayValue = String(today.getDate());
-                  }
-                  setDay(dayValue || String(today.getDate()).padStart(2, '0'));
+                  setDay(value);
                 }
               }}
               onBlur={(e) => {
