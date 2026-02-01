@@ -1,6 +1,6 @@
-import { Suspense } from 'react';
 import Link from 'next/link';
 import CurrencyToggle from '@/components/CurrencyToggle';
+import BudgetToggle from '@/components/BudgetToggle';
 import TransactionsListWrapper from './TransactionsListWrapper';
 
 export default function TransactionsPage() {
@@ -34,38 +34,17 @@ export default function TransactionsPage() {
               Transactions
             </h1>
           </div>
-          <CurrencyToggle />
+          <div className="flex items-center gap-3">
+            <BudgetToggle />
+            <CurrencyToggle />
+          </div>
         </div>
       </header>
 
       {/* Main Content */}
       <main className="max-w-lg mx-auto px-4 py-6">
-        <Suspense fallback={<TransactionsSkeleton />}>
-          <TransactionsListWrapper />
-        </Suspense>
+        <TransactionsListWrapper />
       </main>
-    </div>
-  );
-}
-
-function TransactionsSkeleton() {
-  return (
-    <div className="space-y-3">
-      {[1, 2, 3, 4, 5].map((i) => (
-        <div
-          key={i}
-          className="p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 animate-pulse"
-        >
-          <div className="flex justify-between items-start">
-            <div className="flex-1">
-              <div className="h-4 w-3/4 bg-gray-200 dark:bg-gray-700 rounded mb-2" />
-              <div className="h-3 w-1/2 bg-gray-200 dark:bg-gray-700 rounded mb-2" />
-              <div className="h-3 w-1/3 bg-gray-200 dark:bg-gray-700 rounded" />
-            </div>
-            <div className="h-5 w-16 bg-gray-200 dark:bg-gray-700 rounded" />
-          </div>
-        </div>
-      ))}
     </div>
   );
 }

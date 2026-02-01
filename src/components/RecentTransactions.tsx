@@ -1,11 +1,12 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import type { Transaction, ReferenceCurrency } from '@/lib/types';
-import { CURRENCY_SYMBOLS } from '@/lib/types';
+import type { Transaction, ReferenceCurrency, BudgetType } from '@/lib/types';
+import { isPersonalTransaction, isBusinessTransaction, CURRENCY_SYMBOLS } from '@/lib/types';
 import { getReferenceCurrency } from '@/lib/preferences';
 
 interface RecentTransactionsProps {
+  budgetType: BudgetType;
   transactions: Transaction[];
   onEdit?: (transaction: Transaction) => void;
   onDelete?: (transaction: Transaction) => void;
@@ -29,6 +30,7 @@ function formatDate(dateString: string): string {
 }
 
 export default function RecentTransactions({
+  budgetType,
   transactions,
   onEdit,
   onDelete,
@@ -43,12 +45,10 @@ export default function RecentTransactions({
     setMounted(true);
     setReferenceCurrency(getReferenceCurrency());
 
-    // Listen for storage changes (currency toggle from other tabs)
     const handleStorage = () => {
       setReferenceCurrency(getReferenceCurrency());
     };
 
-    // Listen for custom currency change event (same window)
     const handleCurrencyChange = (event: Event) => {
       const customEvent = event as CustomEvent;
       if (customEvent.detail?.currency) {
@@ -60,7 +60,7 @@ export default function RecentTransactions({
 
     window.addEventListener('storage', handleStorage);
     window.addEventListener('currencyChanged', handleCurrencyChange);
-    
+
     return () => {
       window.removeEventListener('storage', handleStorage);
       window.removeEventListener('currencyChanged', handleCurrencyChange);
@@ -72,10 +72,9 @@ export default function RecentTransactions({
 
     setIsDeleting(true);
     try {
-      // Get password from sessionStorage for auth
       const password = sessionStorage.getItem('budget-password') || '';
-      
-      const response = await fetch(`/api/transactions?id=${transaction.id}`, {
+
+      const response = await fetch(`/api/${budgetType}/transactions?id=${transaction.id}`, {
         method: 'DELETE',
         headers: {
           'x-auth-password': password,
@@ -143,10 +142,35 @@ export default function RecentTransactions({
               <div className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 {transaction.table} &gt; {transaction.subcategory}
               </div>
-              <div className="flex items-center gap-2 mt-1 text-xs text-gray-400">
+              <div className="flex items-center gap-2 mt-1 text-xs text-gray-400 flex-wrap">
                 <span>{formatDate(transaction.transactionDate)}</span>
                 <span>&bull;</span>
                 <span>{transaction.account}</span>
+                {/* Budget-specific badges */}
+                {isPersonalTransaction(transaction) && transaction.distribute !== 'one-time' && (
+                  <>
+                    <span>&bull;</span>
+                    <span className="bg-blue-50 text-blue-700 dark:bg-blue-900 dark:text-blue-200 px-1.5 py-0.5 rounded">
+                      {transaction.distribute}
+                    </span>
+                  </>
+                )}
+                {isBusinessTransaction(transaction) && transaction.capitalExpense && (
+                  <>
+                    <span>&bull;</span>
+                    <span className="bg-amber-50 text-amber-700 dark:bg-amber-900 dark:text-amber-200 px-1.5 py-0.5 rounded">
+                      Capital
+                    </span>
+                  </>
+                )}
+                {isBusinessTransaction(transaction) && transaction.gstHstPaid != null && transaction.gstHstPaid > 0 && (
+                  <>
+                    <span>&bull;</span>
+                    <span className="bg-green-50 text-green-700 dark:bg-green-900 dark:text-green-200 px-1.5 py-0.5 rounded">
+                      GST ${transaction.gstHstPaid.toFixed(2)}
+                    </span>
+                  </>
+                )}
                 {transaction.tag && (
                   <>
                     <span>&bull;</span>

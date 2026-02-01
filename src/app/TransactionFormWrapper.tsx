@@ -1,86 +1,108 @@
+'use client';
+
+import { useState, useEffect, useCallback } from 'react';
 import TransactionForm from '@/components/TransactionForm';
-import {
-  fetchSchema,
-  getUniqueVendors,
-  getUniqueAccounts,
-  getUniqueTags,
-  fetchDefaults,
-} from '@/lib/google-sheets';
+import type { Schema, BudgetType } from '@/lib/types';
+import { getBudgetMode } from '@/lib/preferences';
 
-// Force dynamic rendering to prevent build-time API calls
-export const dynamic = 'force-dynamic';
-export const revalidate = 0;
+const emptySchema: Schema = { tables: [], subcategories: {}, lineItems: {} };
 
-async function getData() {
-  // Check if credentials are missing (but allow in development)
-  const hasCredentials = process.env.GOOGLE_SHEETS_ID && 
-                         process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL && 
-                         process.env.GOOGLE_PRIVATE_KEY;
-  
-  // Only return empty data during actual build phase, not in development
-  const isBuildPhase = process.env.NEXT_PHASE === 'phase-production-build';
-  
-  if (isBuildPhase && !hasCredentials) {
-    // Return empty data during build if credentials are missing
-    return {
-      schema: { tables: [], subcategories: {}, lineItems: {} },
-      vendors: [],
-      accounts: [],
-      tags: [],
-      defaults: {},
+export default function TransactionFormWrapper() {
+  const [budgetMode, setBudgetMode] = useState<BudgetType>('personal');
+  const [schema, setSchema] = useState<Schema>(emptySchema);
+  const [vendors, setVendors] = useState<string[]>([]);
+  const [accounts, setAccounts] = useState<string[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const fetchData = useCallback(async (mode: BudgetType) => {
+    setIsLoading(true);
+    try {
+      const [schemaRes, vendorsRes, accountsRes, tagsRes] = await Promise.all([
+        fetch(`/api/${mode}/schema`).then((r) => r.json()),
+        fetch(`/api/${mode}/transactions/vendors`).then((r) => r.json()),
+        fetch(`/api/${mode}/transactions/accounts`).then((r) => r.json()),
+        fetch(`/api/${mode}/transactions/tags`).then((r) => r.json()),
+      ]);
+
+      setSchema(schemaRes.success ? schemaRes.data : emptySchema);
+      setVendors(vendorsRes.success ? vendorsRes.data.values : []);
+      setAccounts(accountsRes.success ? accountsRes.data.values : []);
+      setTags(tagsRes.success ? tagsRes.data.values : []);
+    } catch (error) {
+      console.error('Error fetching data:', error);
+      setSchema(emptySchema);
+      setVendors([]);
+      setAccounts([]);
+      setTags([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const mode = getBudgetMode();
+    setBudgetMode(mode);
+    fetchData(mode);
+  }, [fetchData]);
+
+  useEffect(() => {
+    const handleBudgetChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ mode: BudgetType }>;
+      const newMode = customEvent.detail.mode;
+      setBudgetMode(newMode);
+      fetchData(newMode);
     };
+
+    window.addEventListener('budgetModeChanged', handleBudgetChange);
+    return () => window.removeEventListener('budgetModeChanged', handleBudgetChange);
+  }, [fetchData]);
+
+  if (isLoading) {
+    return <FormSkeleton />;
   }
-
-  // Try to fetch data, but handle errors gracefully
-  try {
-    const [schema, vendors, accounts, tags, defaults] = await Promise.all([
-      fetchSchema().catch((err) => {
-        console.error('Error fetching schema:', err);
-        return { tables: [], subcategories: {}, lineItems: {} };
-      }),
-      getUniqueVendors().catch((err) => {
-        console.error('Error fetching vendors:', err);
-        return [];
-      }),
-      getUniqueAccounts().catch((err) => {
-        console.error('Error fetching accounts:', err);
-        return [];
-      }),
-      getUniqueTags().catch((err) => {
-        console.error('Error fetching tags:', err);
-        return [];
-      }),
-      fetchDefaults().catch((err) => {
-        console.error('Error fetching defaults:', err);
-        return {};
-      }),
-    ]);
-
-    return { schema, vendors, accounts, tags, defaults };
-  } catch (error) {
-    console.error('Error fetching data:', error);
-    // Return empty data on error to prevent build/runtime failure
-    // The form will still render but without autocomplete suggestions
-    return {
-      schema: { tables: [], subcategories: {}, lineItems: {} },
-      vendors: [],
-      accounts: [],
-      tags: [],
-      defaults: {},
-    };
-  }
-}
-
-export default async function TransactionFormWrapper() {
-  const { schema, vendors, accounts, tags, defaults } = await getData();
 
   return (
     <TransactionForm
+      budgetType={budgetMode}
       schema={schema}
       vendors={vendors}
       accounts={accounts}
       tags={tags}
-      defaults={defaults}
     />
+  );
+}
+
+function FormSkeleton() {
+  return (
+    <div className="space-y-4 animate-pulse">
+      <div className="space-y-1">
+        <div className="h-4 w-12 bg-gray-200 rounded" />
+        <div className="h-12 bg-gray-200 rounded-lg" />
+      </div>
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="space-y-1">
+          <div className="h-4 w-24 bg-gray-200 rounded" />
+          <div className="h-12 bg-gray-200 rounded-lg" />
+        </div>
+      ))}
+      <div className="grid grid-cols-3 gap-3">
+        <div className="col-span-2 space-y-1">
+          <div className="h-4 w-16 bg-gray-200 rounded" />
+          <div className="h-12 bg-gray-200 rounded-lg" />
+        </div>
+        <div className="space-y-1">
+          <div className="h-4 w-16 bg-gray-200 rounded" />
+          <div className="h-12 bg-gray-200 rounded-lg" />
+        </div>
+      </div>
+      {[1, 2, 3].map((i) => (
+        <div key={i} className="space-y-1">
+          <div className="h-4 w-20 bg-gray-200 rounded" />
+          <div className="h-12 bg-gray-200 rounded-lg" />
+        </div>
+      ))}
+      <div className="h-12 bg-gray-200 rounded-lg mt-6" />
+    </div>
   );
 }

@@ -80,10 +80,12 @@ export async function POST(
       );
     }
 
-    // Generate unique filename
+    // Generate unique filename with budget prefix
+    const budgetParam = request.nextUrl.searchParams.get('budget') || 'personal';
+    const budget = budgetParam === 'business' ? 'business' : 'personal';
     const timestamp = Date.now();
     const extension = file.name.split('.').pop() || 'jpg';
-    const filename = `receipts/${timestamp}.${extension}`;
+    const filename = `receipts/${budget}/${timestamp}.${extension}`;
 
     // Convert File to Buffer
     const arrayBuffer = await file.arrayBuffer();

@@ -6,9 +6,11 @@ import type {
   Schema,
   Currency,
   Distribute,
+  BudgetType,
   TransactionInput,
+  PersonalTransactionInput,
+  BusinessTransactionInput,
   ExchangeRates,
-  Defaults,
 } from '@/lib/types';
 import { CURRENCIES, CURRENCY_SYMBOLS, DISTRIBUTE_OPTIONS } from '@/lib/types';
 import {
@@ -19,11 +21,11 @@ import {
 } from '@/lib/preferences';
 
 interface TransactionFormProps {
+  budgetType: BudgetType;
   schema: Schema;
   vendors: string[];
   accounts: string[];
   tags: string[];
-  defaults: Defaults;
   onSuccess?: () => void;
 }
 
@@ -34,11 +36,11 @@ function formatDate(date: Date): string {
 const inputStyle = { color: '#000000', backgroundColor: '#ffffff' };
 
 export default function TransactionForm({
+  budgetType,
   schema,
   vendors,
   accounts,
   tags,
-  defaults,
   onSuccess,
 }: TransactionFormProps) {
   // Initialize with current date
@@ -46,7 +48,7 @@ export default function TransactionForm({
   const [year, setYear] = useState(String(today.getFullYear()));
   const [month, setMonth] = useState(String(today.getMonth() + 1).padStart(2, '0'));
   const [day, setDay] = useState(String(today.getDate()).padStart(2, '0'));
-  
+
   // Computed transactionDate in YYYY-MM-DD format, ensuring it's always valid
   const transactionDate = useMemo(() => {
     const y = year || String(today.getFullYear());
@@ -66,9 +68,15 @@ export default function TransactionForm({
   const [vendor, setVendor] = useState('');
   const [note, setNote] = useState('');
   const [receiptUrl, setReceiptUrl] = useState('');
-  const [account, setAccount] = useState('RBC Visa');
-  const [distribute, setDistribute] = useState<Distribute>('one-time');
+  const [account, setAccount] = useState('');
   const [tag, setTag] = useState('');
+
+  // Personal-only fields
+  const [distribute, setDistribute] = useState<Distribute>('one-time');
+
+  // Business-only fields
+  const [gstHstPaid, setGstHstPaid] = useState('');
+  const [capitalExpense, setCapitalExpense] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -85,23 +93,19 @@ export default function TransactionForm({
 
   useEffect(() => {
     setCurrency(getLastUsedCurrency());
-    const savedAccount = getLastUsedAccount();
-    // Use saved account if valid, otherwise use first available account or default
-    const defaultAccount = savedAccount && accounts.includes(savedAccount) 
-      ? savedAccount 
-      : accounts.length > 0 
-        ? accounts[0] 
-        : 'RBC Visa';
-    setAccount(defaultAccount);
-    
+    const savedAccount = getLastUsedAccount(budgetType);
+    if (savedAccount) {
+      setAccount(savedAccount);
+    } else if (accounts.length > 0) {
+      setAccount(accounts[0]);
+    }
+
     // Ensure defaults are valid when schema loads
     if (schema.tables.length > 0 && !schema.tables.includes(table)) {
-      // If default table doesn't exist, use first available
       setTable(schema.tables[0]);
       setSubcategory('');
       setLineItem('');
     } else if (schema.tables.includes('Discretionary')) {
-      // If Discretionary exists, ensure subcategory and lineItem are valid
       const discretionarySubcats = schema.subcategories['Discretionary'] || [];
       if (table === 'Discretionary' && subcategory === 'Dining' && !discretionarySubcats.includes('Dining')) {
         setSubcategory(discretionarySubcats[0] || '');
@@ -114,42 +118,12 @@ export default function TransactionForm({
         }
       }
     }
-  }, [schema, accounts]);
-
-  // Apply defaults when lineItem changes
-  useEffect(() => {
-    if (lineItem && defaults[lineItem]) {
-      const lineItemDefaults = defaults[lineItem];
-      
-      // Auto-fill vendor if default exists (only if currently empty)
-      if (lineItemDefaults.vendor && !vendor) {
-        setVendor(lineItemDefaults.vendor);
-      }
-      
-      // Auto-fill tag if default exists (only if currently empty)
-      if (lineItemDefaults.tag && !tag) {
-        setTag(lineItemDefaults.tag);
-      }
-      
-      // Auto-fill account if default exists (only if currently empty)
-      if (lineItemDefaults.account && !account) {
-        setAccount(lineItemDefaults.account);
-        setLastUsedAccount(lineItemDefaults.account);
-      }
-      
-      // Auto-fill note if default exists (only if currently empty)
-      if (lineItemDefaults.note && !note) {
-        setNote(lineItemDefaults.note);
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lineItem]); // Only re-run when lineItem changes
+  }, [schema, budgetType, accounts]);
 
   const fetchRates = useCallback(async () => {
     const numAmount = parseFloat(amount);
     if (!numAmount || numAmount <= 0) return;
 
-    // Validate date format before making API call
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(transactionDate)) {
       console.error('Invalid date format for rate fetch:', transactionDate);
@@ -240,10 +214,9 @@ export default function TransactionForm({
       const formData = new FormData();
       formData.append('file', file);
 
-      // Get password from sessionStorage for auth
       const password = sessionStorage.getItem('budget-password') || '';
-      
-      const response = await fetch('/api/upload', {
+
+      const response = await fetch(`/api/upload?budget=${budgetType}`, {
         headers: {
           'x-auth-password': password,
         },
@@ -306,7 +279,7 @@ export default function TransactionForm({
 
     setIsSubmitting(true);
 
-    const transaction: TransactionInput = {
+    const baseFields = {
       transactionDate,
       table,
       subcategory,
@@ -321,16 +294,25 @@ export default function TransactionForm({
       note: note || undefined,
       receiptUrl: receiptUrl || undefined,
       account,
-      distribute,
       tag: tag || undefined,
       submittedAt: new Date().toISOString(),
     };
 
+    let transaction: TransactionInput;
+    if (budgetType === 'personal') {
+      transaction = { ...baseFields, distribute } as PersonalTransactionInput;
+    } else {
+      transaction = {
+        ...baseFields,
+        gstHstPaid: gstHstPaid ? parseFloat(gstHstPaid) : undefined,
+        capitalExpense,
+      } as BusinessTransactionInput;
+    }
+
     try {
-      // Get password from sessionStorage for auth
       const password = sessionStorage.getItem('budget-password') || '';
-      
-      const response = await fetch('/api/transactions', {
+
+      const response = await fetch(`/api/${budgetType}/transactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -346,9 +328,9 @@ export default function TransactionForm({
       }
 
       setLastUsedCurrency(currency);
-      setLastUsedAccount(account);
+      setLastUsedAccount(account, budgetType);
 
-      // Reset date to current day
+      // Reset form
       const resetDate = new Date();
       setYear(String(resetDate.getFullYear()));
       setMonth(String(resetDate.getMonth() + 1).padStart(2, '0'));
@@ -366,7 +348,8 @@ export default function TransactionForm({
       setReceiptUrl('');
       setTag('');
       setDistribute('one-time');
-      // Note: account is preserved via setLastUsedAccount above, so it will be set from preferences
+      setGstHstPaid('');
+      setCapitalExpense(false);
 
       setSubmitSuccess(true);
       onSuccess?.();
@@ -412,15 +395,31 @@ export default function TransactionForm({
               pattern="[0-9]*"
               value={amount}
               onChange={(e) => {
-                // Only allow numbers and decimal point
                 const value = e.target.value;
                 const numericValue = value.replace(/[^0-9.]/g, '');
-                // Prevent multiple decimal points
                 const parts = numericValue.split('.');
-                const filteredValue = parts.length > 2 
+                const filteredValue = parts.length > 2
                   ? parts[0] + '.' + parts.slice(1).join('')
                   : numericValue;
                 setAmount(filteredValue);
+              }}
+              onBlur={(e) => {
+                const value = e.target.value.trim();
+                if (value === '') {
+                  setAmount('');
+                  return;
+                }
+
+                if (value.includes('.')) {
+                  const [intPart, decPart] = value.split('.');
+                  const formattedDec = (decPart || '').padEnd(2, '0').slice(0, 2);
+                  setAmount(`${intPart || '0'}.${formattedDec}`);
+                } else {
+                  const num = parseFloat(value);
+                  if (!isNaN(num) && num >= 0) {
+                    setAmount(num.toFixed(2));
+                  }
+                }
               }}
               className="form-input pl-8"
               style={inputStyle}
@@ -449,28 +448,63 @@ export default function TransactionForm({
             ))}
           </select>
         </div>
+
+        {budgetType === 'personal' ? (
+          <div className="form-group">
+            <label htmlFor="distribute" className="form-label">
+              Distribute
+            </label>
+            <select
+              id="distribute"
+              value={distribute}
+              onChange={(e) => setDistribute(e.target.value as Distribute)}
+              className="form-input"
+              style={inputStyle}
+            >
+              {DISTRIBUTE_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option === 'one-time' ? 'One-time' :
+                   option === 'monthly' ? 'Monthly (/12)' :
+                   option === 'quarterly' ? 'Quarterly (/4)' :
+                   'Yearly (/2)'}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : (
+          <div className="form-group flex items-end pb-1">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={capitalExpense}
+                onChange={(e) => setCapitalExpense(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300"
+              />
+              <span className="text-sm font-medium text-gray-700">Capital</span>
+            </label>
+          </div>
+        )}
+      </div>
+
+      {budgetType === 'business' && (
         <div className="form-group">
-          <label htmlFor="distribute" className="form-label">
-            Distribute
+          <label htmlFor="gstHstPaid" className="form-label">
+            GST/HST Paid
           </label>
-          <select
-            id="distribute"
-            value={distribute}
-            onChange={(e) => setDistribute(e.target.value as Distribute)}
+          <input
+            type="number"
+            id="gstHstPaid"
+            inputMode="decimal"
+            value={gstHstPaid}
+            onChange={(e) => setGstHstPaid(e.target.value)}
             className="form-input"
             style={inputStyle}
-          >
-            {DISTRIBUTE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option === 'one-time' ? 'One-time' : 
-                 option === 'per month' ? 'Per month (÷12)' :
-                 option === 'quarterly' ? 'Quarterly (÷4)' :
-                 'Semi-annual (÷2)'}
-              </option>
-            ))}
-          </select>
+            placeholder="0.00"
+            step="0.01"
+            min="0"
+          />
         </div>
-      </div>
+      )}
 
       <div className="form-group">
         <label className="form-label">
@@ -490,7 +524,7 @@ export default function TransactionForm({
               onChange={(e) => {
                 const value = e.target.value.replace(/[^\d]/g, '');
                 if (value.length <= 4) {
-                  setYear(value); // Allow empty string while typing
+                  setYear(value || String(today.getFullYear()));
                 }
               }}
               onBlur={(e) => {
@@ -522,7 +556,11 @@ export default function TransactionForm({
               onChange={(e) => {
                 const value = e.target.value.replace(/[^\d]/g, '');
                 if (value.length <= 2) {
-                  setMonth(value); // Allow empty string while typing
+                  let monthValue = value;
+                  if (monthValue && (parseInt(monthValue) < 1 || parseInt(monthValue) > 12)) {
+                    monthValue = String(today.getMonth() + 1);
+                  }
+                  setMonth(monthValue || String(today.getMonth() + 1).padStart(2, '0'));
                 }
               }}
               onBlur={(e) => {
@@ -553,7 +591,11 @@ export default function TransactionForm({
               onChange={(e) => {
                 const value = e.target.value.replace(/[^\d]/g, '');
                 if (value.length <= 2) {
-                  setDay(value); // Allow empty string while typing
+                  let dayValue = value;
+                  if (dayValue && (parseInt(dayValue) < 1 || parseInt(dayValue) > 31)) {
+                    dayValue = String(today.getDate());
+                  }
+                  setDay(dayValue || String(today.getDate()).padStart(2, '0'));
                 }
               }}
               onBlur={(e) => {
@@ -605,10 +647,7 @@ export default function TransactionForm({
           <select
             id="account"
             value={account}
-            onChange={(e) => {
-              setAccount(e.target.value);
-              setLastUsedAccount(e.target.value);
-            }}
+            onChange={(e) => setAccount(e.target.value)}
             className="form-input"
             style={inputStyle}
             required

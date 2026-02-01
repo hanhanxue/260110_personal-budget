@@ -2,16 +2,18 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import RecentTransactions from '@/components/RecentTransactions';
-import type { Transaction } from '@/lib/types';
+import type { Transaction, BudgetType } from '@/lib/types';
+import { getBudgetMode } from '@/lib/preferences';
 
 export default function TransactionsListWrapper() {
+  const [budgetMode, setBudgetMode] = useState<BudgetType>('personal');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState('');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
-  const fetchTransactions = useCallback(async () => {
+  const fetchTransactions = useCallback(async (mode: BudgetType) => {
     setIsLoading(true);
     setError('');
 
@@ -20,7 +22,7 @@ export default function TransactionsListWrapper() {
       if (startDate) params.set('startDate', startDate);
       if (endDate) params.set('endDate', endDate);
 
-      const response = await fetch(`/api/transactions?${params}`);
+      const response = await fetch(`/api/${mode}/transactions?${params}`);
       const data = await response.json();
 
       if (!data.success) {
@@ -37,7 +39,21 @@ export default function TransactionsListWrapper() {
   }, [startDate, endDate]);
 
   useEffect(() => {
-    fetchTransactions();
+    const mode = getBudgetMode();
+    setBudgetMode(mode);
+    fetchTransactions(mode);
+  }, [fetchTransactions]);
+
+  useEffect(() => {
+    const handleBudgetChange = (event: Event) => {
+      const customEvent = event as CustomEvent<{ mode: BudgetType }>;
+      const newMode = customEvent.detail.mode;
+      setBudgetMode(newMode);
+      fetchTransactions(newMode);
+    };
+
+    window.addEventListener('budgetModeChanged', handleBudgetChange);
+    return () => window.removeEventListener('budgetModeChanged', handleBudgetChange);
   }, [fetchTransactions]);
 
   const handleDelete = (deleted: Transaction) => {
@@ -86,7 +102,7 @@ export default function TransactionsListWrapper() {
         <div className="p-4 bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-200 rounded-lg">
           {error}
           <button
-            onClick={fetchTransactions}
+            onClick={() => fetchTransactions(budgetMode)}
             className="ml-2 underline"
           >
             Retry
@@ -101,6 +117,7 @@ export default function TransactionsListWrapper() {
         </div>
       ) : (
         <RecentTransactions
+          budgetType={budgetMode}
           transactions={transactions}
           onDelete={handleDelete}
         />

@@ -10,7 +10,6 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.966.0",
-    "@vercel/blob": "^0.27.0",
     "googleapis": "^144.0.0",
     "next": "14.2.21",
     "react": "^18.2.0",

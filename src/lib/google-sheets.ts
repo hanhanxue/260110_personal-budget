@@ -1,34 +1,57 @@
 import { google } from 'googleapis';
-import type { Schema, SchemaRow, Transaction, TransactionInput, Currency, Distribute, Defaults } from './types';
+import type {
+  BudgetType,
+  Schema,
+  Transaction,
+  TransactionInput,
+  PersonalTransaction,
+  BusinessTransaction,
+  PersonalTransactionInput,
+  BusinessTransactionInput,
+  Currency,
+  Distribute,
+} from './types';
+import { DEFAULT_PERSONAL_ACCOUNTS, DEFAULT_BUSINESS_ACCOUNTS } from './types';
 
-const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_ID;
+// Distribute migration map: old values → new values
+const DISTRIBUTE_MIGRATION: Record<string, Distribute> = {
+  'per month': 'monthly',
+  'semi-annual': 'yearly',
+};
 
-if (!SPREADSHEET_ID) {
-  console.warn('GOOGLE_SHEETS_ID environment variable is not set');
+function migrateDistribute(value: string): Distribute {
+  return DISTRIBUTE_MIGRATION[value] || (value as Distribute) || 'one-time';
+}
+
+function getSpreadsheetId(budget: BudgetType): string {
+  const id =
+    budget === 'personal'
+      ? process.env.PERSONAL_GOOGLE_SHEETS_ID
+      : process.env.BUSINESS_GOOGLE_SHEETS_ID;
+
+  if (!id) {
+    throw new Error(
+      `${budget === 'personal' ? 'PERSONAL' : 'BUSINESS'}_GOOGLE_SHEETS_ID environment variable is not configured`
+    );
+  }
+  return id;
 }
 
 function getAuth() {
   const privateKey = process.env.GOOGLE_PRIVATE_KEY;
   const clientEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
-  
+
   if (!privateKey || !clientEmail) {
     return null;
   }
 
   try {
-    // Ensure the private key is properly formatted with newlines
-    // Handle both escaped newlines (\n) and actual newlines
-    // The key from Google's JSON file has \n as literal characters that need to be converted
     let formattedKey = privateKey.replace(/\\n/g, '\n').trim();
 
-    // Ensure the key starts and ends with proper markers if they're missing
     if (!formattedKey.includes('BEGIN')) {
-      // If no BEGIN marker, the key might be in a different format
-      // Try to detect and format it properly
       if (formattedKey.startsWith('-----')) {
-        // Already has markers, just ensure proper formatting
+        // Already has markers
       } else {
-        // Key might be missing headers - this is unusual but handle it
         console.warn('Private key may be missing PEM headers');
       }
     }
@@ -41,7 +64,6 @@ function getAuth() {
       scopes: ['https://www.googleapis.com/auth/spreadsheets'],
     });
   } catch (error) {
-    // Handle OpenSSL or other auth errors gracefully
     console.error('Error initializing Google Auth:', error);
     return null;
   }
@@ -56,17 +78,14 @@ function getSheets() {
 }
 
 // Schema operations
-export async function fetchSchema(): Promise<Schema> {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
+export async function fetchSchema(budget: BudgetType): Promise<Schema> {
+  const spreadsheetId = getSpreadsheetId(budget);
+  const sheets = getSheets();
 
   try {
-    const sheets = getSheets();
-
     const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'Schema!A2:D', // Skip header row
+      spreadsheetId,
+      range: 'Schema!A2:D',
     });
 
     const rows = response.data.values || [];
@@ -77,19 +96,15 @@ export async function fetchSchema(): Promise<Schema> {
 
     for (const row of rows) {
       const [table, subcategory, lineItem, active] = row;
-
-      // Skip inactive items
       if (active?.toUpperCase() !== 'TRUE') continue;
 
       tables.add(table);
 
-      // Track subcategories per table
       if (!subcategories[table]) {
         subcategories[table] = new Set();
       }
       subcategories[table].add(subcategory);
 
-      // Track line items per subcategory (using "table|subcategory" as key)
       const subKey = `${table}|${subcategory}`;
       if (!lineItems[subKey]) {
         lineItems[subKey] = new Set();
@@ -107,22 +122,25 @@ export async function fetchSchema(): Promise<Schema> {
       ),
     };
   } catch (error) {
-    // Handle OpenSSL or other errors gracefully during build
     console.error('Error fetching schema:', error);
     throw error;
   }
 }
 
-// Transaction operations
-const TRANSACTION_COLUMNS = [
-  'Transaction Date', 'Table', 'Subcategory', 'Line Item', 'Amount', 'Currency',
-  'CAD Amount', 'CAD Rate', 'USD Amount', 'USD Rate', 'Vendor', 'Note',
-  'Receipt URL', 'Account', 'Distribute', 'Tag', 'Submitted At'
-];
+// Column layouts:
+// Personal (17 cols, A2:Q):
+//   Date, Table, Subcategory, Line Item, Amount, Currency,
+//   CAD Amount, CAD Rate, USD Amount, USD Rate, Vendor, Note,
+//   Receipt URL, Account, Distribute, Tag, Submitted At
+//
+// Business (18 cols, A2:R):
+//   Date, Table, Subcategory, Line Item, Amount, Currency,
+//   CAD Amount, CAD Rate, USD Amount, USD Rate, Vendor, Note,
+//   Receipt URL, Account, Tag, GST/HST Paid, Capital Expense, Submitted At
 
-function rowToTransaction(row: string[], index: number): Transaction {
+function personalRowToTransaction(row: string[], index: number): PersonalTransaction {
   return {
-    id: String(index + 2), // Row number (1-indexed, +1 for header)
+    id: String(index + 2),
     transactionDate: row[0] || '',
     table: row[1] || '',
     subcategory: row[2] || '',
@@ -137,37 +155,59 @@ function rowToTransaction(row: string[], index: number): Transaction {
     note: row[11] || undefined,
     receiptUrl: row[12] || undefined,
     account: row[13] || '',
-    distribute: (row[14] as Distribute) || 'one-time',
+    distribute: migrateDistribute(row[14] || 'one-time'),
     tag: row[15] || undefined,
     submittedAt: row[16] || '',
   };
 }
 
-function transactionToRow(transaction: TransactionInput): (string | number)[] {
-  // Parse the date and convert to Google Sheets date serial number
-  // Google Sheets uses days since December 30, 1899
-  const dateParts = transaction.transactionDate.split('-');
+function businessRowToTransaction(row: string[], index: number): BusinessTransaction {
+  return {
+    id: String(index + 2),
+    transactionDate: row[0] || '',
+    table: row[1] || '',
+    subcategory: row[2] || '',
+    lineItem: row[3] || '',
+    amount: parseFloat(row[4]) || 0,
+    currency: (row[5] as Currency) || 'CAD',
+    cadAmount: parseFloat(row[6]) || 0,
+    cadRate: parseFloat(row[7]) || 1,
+    usdAmount: parseFloat(row[8]) || 0,
+    usdRate: parseFloat(row[9]) || 1,
+    vendor: row[10] || undefined,
+    note: row[11] || undefined,
+    receiptUrl: row[12] || undefined,
+    account: row[13] || '',
+    tag: row[14] || undefined,
+    gstHstPaid: row[15] ? parseFloat(row[15]) : undefined,
+    capitalExpense: row[16]?.toUpperCase() === 'TRUE',
+    submittedAt: row[17] || '',
+  };
+}
+
+function dateToSerialNumber(dateString: string): number {
+  const dateParts = dateString.split('-');
   const date = new Date(
     parseInt(dateParts[0], 10),
     parseInt(dateParts[1], 10) - 1,
     parseInt(dateParts[2], 10)
   );
-  
-  // Calculate serial number: days since December 30, 1899
   const epoch = new Date(1899, 11, 30);
-  const serialNumber = Math.floor((date.getTime() - epoch.getTime()) / (1000 * 60 * 60 * 24));
-  
+  return Math.floor((date.getTime() - epoch.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function personalTransactionToRow(transaction: PersonalTransactionInput): (string | number)[] {
   return [
-    serialNumber, // Use serial number instead of string
+    dateToSerialNumber(transaction.transactionDate),
     transaction.table,
     transaction.subcategory,
     transaction.lineItem,
     String(transaction.amount),
     transaction.currency,
-    String(transaction.cadAmount),
-    String(transaction.cadRate),
-    String(transaction.usdAmount),
-    String(transaction.usdRate),
+    transaction.cadAmount,
+    transaction.cadRate,
+    transaction.usdAmount,
+    transaction.usdRate,
     transaction.vendor || '',
     transaction.note || '',
     transaction.receiptUrl || '',
@@ -178,39 +218,74 @@ function transactionToRow(transaction: TransactionInput): (string | number)[] {
   ];
 }
 
-export async function fetchTransactions(options?: {
-  limit?: number;
-  startDate?: string;
-  endDate?: string;
-}): Promise<{ transactions: Transaction[]; total: number }> {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
+function businessTransactionToRow(transaction: BusinessTransactionInput): (string | number)[] {
+  return [
+    dateToSerialNumber(transaction.transactionDate),
+    transaction.table,
+    transaction.subcategory,
+    transaction.lineItem,
+    String(transaction.amount),
+    transaction.currency,
+    transaction.cadAmount,
+    transaction.cadRate,
+    transaction.usdAmount,
+    transaction.usdRate,
+    transaction.vendor || '',
+    transaction.note || '',
+    transaction.receiptUrl || '',
+    transaction.account,
+    transaction.tag || '',
+    transaction.gstHstPaid != null ? String(transaction.gstHstPaid) : '',
+    transaction.capitalExpense ? 'TRUE' : 'FALSE',
+    transaction.submittedAt,
+  ];
+}
 
+function transactionToRow(budget: BudgetType, transaction: TransactionInput): (string | number)[] {
+  if (budget === 'personal') {
+    return personalTransactionToRow(transaction as PersonalTransactionInput);
+  }
+  return businessTransactionToRow(transaction as BusinessTransactionInput);
+}
+
+function getColumnRange(budget: BudgetType): string {
+  return budget === 'personal' ? 'Q' : 'R';
+}
+
+export async function fetchTransactions(
+  budget: BudgetType,
+  options?: {
+    limit?: number;
+    startDate?: string;
+    endDate?: string;
+  }
+): Promise<{ transactions: Transaction[]; total: number }> {
+  const spreadsheetId = getSpreadsheetId(budget);
   const sheets = getSheets();
+  const lastCol = getColumnRange(budget);
 
   const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Transactions!A2:Q', // Skip header row
+    spreadsheetId,
+    range: `Transactions!A2:${lastCol}`,
   });
 
   const rows = response.data.values || [];
-  let transactions = rows.map((row, index) => rowToTransaction(row, index));
+  const rowMapper =
+    budget === 'personal' ? personalRowToTransaction : businessRowToTransaction;
 
-  // Filter by date range
+  let transactions: Transaction[] = rows.map((row, index) => rowMapper(row, index));
+
   if (options?.startDate) {
-    transactions = transactions.filter(t => t.transactionDate >= options.startDate!);
+    transactions = transactions.filter((t) => t.transactionDate >= options.startDate!);
   }
   if (options?.endDate) {
-    transactions = transactions.filter(t => t.transactionDate <= options.endDate!);
+    transactions = transactions.filter((t) => t.transactionDate <= options.endDate!);
   }
 
   const total = transactions.length;
 
-  // Sort by date descending (most recent first)
   transactions.sort((a, b) => b.transactionDate.localeCompare(a.transactionDate));
 
-  // Limit results
   if (options?.limit) {
     transactions = transactions.slice(0, options.limit);
   }
@@ -218,19 +293,15 @@ export async function fetchTransactions(options?: {
   return { transactions, total };
 }
 
-export async function appendTransaction(transaction: TransactionInput): Promise<void> {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
-
+export async function appendTransaction(
+  budget: BudgetType,
+  transaction: TransactionInput
+): Promise<void> {
+  const spreadsheetId = getSpreadsheetId(budget);
   const sheets = getSheets();
+  const row = transactionToRow(budget, transaction);
 
-  const row = transactionToRow(transaction);
-
-  // Get the sheet ID first
-  const spreadsheet = await sheets.spreadsheets.get({
-    spreadsheetId: SPREADSHEET_ID,
-  });
+  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
 
   const transactionsSheet = spreadsheet.data.sheets?.find(
     (sheet) => sheet.properties?.title === 'Transactions'
@@ -241,32 +312,27 @@ export async function appendTransaction(transaction: TransactionInput): Promise<
   }
 
   const sheetId = transactionsSheet.properties.sheetId;
-  const rowNumber = 2; // Insert at row 2 (right after header row 1)
 
-  // Insert a new row at row 2 and add the transaction data
-  // This will shift all existing rows down
   await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: SPREADSHEET_ID,
+    spreadsheetId,
     requestBody: {
       requests: [
-        // Insert a new row at row 2 (0-based index: 1)
         {
           insertDimension: {
             range: {
-              sheetId: sheetId,
+              sheetId,
               dimension: 'ROWS',
-              startIndex: 1, // 0-based: row 1 = row 2 in the sheet
+              startIndex: 1,
               endIndex: 2,
             },
             inheritFromBefore: false,
           },
         },
-        // Update the new row with transaction data
         {
           updateCells: {
             range: {
-              sheetId: sheetId,
-              startRowIndex: 1, // 0-based: row 1 = row 2 in the sheet
+              sheetId,
+              startRowIndex: 1,
               endRowIndex: 2,
               startColumnIndex: 0,
               endColumnIndex: row.length,
@@ -275,36 +341,97 @@ export async function appendTransaction(transaction: TransactionInput): Promise<
               {
                 values: row.map((value) => {
                   if (typeof value === 'number') {
-                    return {
-                      userEnteredValue: { numberValue: value },
-                    };
-                  } else {
-                    return {
-                      userEnteredValue: { stringValue: String(value) },
-                    };
+                    return { userEnteredValue: { numberValue: value } };
                   }
+                  return { userEnteredValue: { stringValue: String(value) } };
                 }),
               },
             ],
             fields: 'userEnteredValue',
           },
         },
-        // Format the date cell (column A) to display as YYYY-MM-DD
         {
           repeatCell: {
             range: {
-              sheetId: sheetId,
-              startRowIndex: 1, // 0-based: row 1 = row 2 in the sheet
+              sheetId,
+              startRowIndex: 1,
               endRowIndex: 2,
               startColumnIndex: 0,
               endColumnIndex: 1,
             },
             cell: {
               userEnteredFormat: {
-                numberFormat: {
-                  type: 'DATE',
-                  pattern: 'yyyy-mm-dd',
-                },
+                numberFormat: { type: 'DATE', pattern: 'yyyy-mm-dd' },
+              },
+            },
+            fields: 'userEnteredFormat.numberFormat',
+          },
+        },
+        // CAD Amount (col G, index 6) and USD Amount (col I, index 8) — currency
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 1,
+              endRowIndex: 2,
+              startColumnIndex: 6,
+              endColumnIndex: 7,
+            },
+            cell: {
+              userEnteredFormat: {
+                numberFormat: { type: 'NUMBER', pattern: '#,##0.00' },
+              },
+            },
+            fields: 'userEnteredFormat.numberFormat',
+          },
+        },
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 1,
+              endRowIndex: 2,
+              startColumnIndex: 8,
+              endColumnIndex: 9,
+            },
+            cell: {
+              userEnteredFormat: {
+                numberFormat: { type: 'NUMBER', pattern: '#,##0.00' },
+              },
+            },
+            fields: 'userEnteredFormat.numberFormat',
+          },
+        },
+        // CAD Rate (col H, index 7) and USD Rate (col J, index 9) — 5 decimals
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 1,
+              endRowIndex: 2,
+              startColumnIndex: 7,
+              endColumnIndex: 8,
+            },
+            cell: {
+              userEnteredFormat: {
+                numberFormat: { type: 'NUMBER', pattern: '0.00000' },
+              },
+            },
+            fields: 'userEnteredFormat.numberFormat',
+          },
+        },
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 1,
+              endRowIndex: 2,
+              startColumnIndex: 9,
+              endColumnIndex: 10,
+            },
+            cell: {
+              userEnteredFormat: {
+                numberFormat: { type: 'NUMBER', pattern: '0.00000' },
               },
             },
             fields: 'userEnteredFormat.numberFormat',
@@ -316,41 +443,34 @@ export async function appendTransaction(transaction: TransactionInput): Promise<
 }
 
 export async function updateTransaction(
+  budget: BudgetType,
   rowIndex: number,
   transaction: TransactionInput
 ): Promise<void> {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
-
+  const spreadsheetId = getSpreadsheetId(budget);
   const sheets = getSheets();
-
-  const row = transactionToRow(transaction);
+  const row = transactionToRow(budget, transaction);
+  const lastCol = getColumnRange(budget);
 
   await sheets.spreadsheets.values.update({
-    spreadsheetId: SPREADSHEET_ID,
-    range: `Transactions!A${rowIndex}:Q${rowIndex}`,
+    spreadsheetId,
+    range: `Transactions!A${rowIndex}:${lastCol}${rowIndex}`,
     valueInputOption: 'USER_ENTERED',
-    requestBody: {
-      values: [row],
-    },
+    requestBody: { values: [row] },
   });
 }
 
-export async function deleteTransaction(rowIndex: number): Promise<void> {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
-
+export async function deleteTransaction(
+  budget: BudgetType,
+  rowIndex: number
+): Promise<void> {
+  const spreadsheetId = getSpreadsheetId(budget);
   const sheets = getSheets();
 
-  // Get sheet ID for Transactions tab
-  const spreadsheet = await sheets.spreadsheets.get({
-    spreadsheetId: SPREADSHEET_ID,
-  });
+  const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
 
   const transactionsSheet = spreadsheet.data.sheets?.find(
-    sheet => sheet.properties?.title === 'Transactions'
+    (sheet) => sheet.properties?.title === 'Transactions'
   );
 
   if (!transactionsSheet?.properties?.sheetId) {
@@ -358,7 +478,7 @@ export async function deleteTransaction(rowIndex: number): Promise<void> {
   }
 
   await sheets.spreadsheets.batchUpdate({
-    spreadsheetId: SPREADSHEET_ID,
+    spreadsheetId,
     requestBody: {
       requests: [
         {
@@ -366,7 +486,7 @@ export async function deleteTransaction(rowIndex: number): Promise<void> {
             range: {
               sheetId: transactionsSheet.properties.sheetId,
               dimension: 'ROWS',
-              startIndex: rowIndex - 1, // 0-indexed
+              startIndex: rowIndex - 1,
               endIndex: rowIndex,
             },
           },
@@ -377,16 +497,13 @@ export async function deleteTransaction(rowIndex: number): Promise<void> {
 }
 
 // Autocomplete helpers
-export async function getUniqueVendors(): Promise<string[]> {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
-
+export async function getUniqueVendors(budget: BudgetType): Promise<string[]> {
+  const spreadsheetId = getSpreadsheetId(budget);
   const sheets = getSheets();
 
   const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Transactions!K2:K', // Vendor column
+    spreadsheetId,
+    range: 'Transactions!K2:K', // Vendor column (same for both)
   });
 
   const values = response.data.values || [];
@@ -399,75 +516,20 @@ export async function getUniqueVendors(): Promise<string[]> {
   return Array.from(vendors).sort();
 }
 
-// Fetch accounts from Accounts sheet (similar to Schema)
-export async function fetchAccounts(): Promise<string[]> {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
-
-  try {
-    const sheets = getSheets();
-
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'Accounts!A2:B', // Account name and Active status
-    });
-
-    const rows = response.data.values || [];
-    const accounts: string[] = [];
-
-    for (const row of rows) {
-      const [accountName, active] = row;
-
-      // Skip if no account name
-      if (!accountName) continue;
-
-      // If there's an Active column, only include active accounts
-      // If no Active column, include all accounts
-      if (active !== undefined && active?.toUpperCase() !== 'TRUE') {
-        continue;
-      }
-
-      accounts.push(accountName);
-    }
-
-    return accounts; // Return in the order they appear in the sheet
-  } catch (error) {
-    console.error('Error fetching accounts from Accounts sheet:', error);
-    // Fallback to empty array if Accounts sheet doesn't exist
-    return [];
-  }
-}
-
-export async function getUniqueAccounts(): Promise<string[]> {
-  // First try to fetch from Accounts sheet
-  const accountsFromSheet = await fetchAccounts();
-  
-  // If we got accounts from the sheet, use those
-  if (accountsFromSheet.length > 0) {
-    return accountsFromSheet;
-  }
-
-  // Fallback: fetch from Transactions column (for backward compatibility)
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
-
+export async function getUniqueAccounts(budget: BudgetType): Promise<string[]> {
+  const spreadsheetId = getSpreadsheetId(budget);
   const sheets = getSheets();
 
   const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Transactions!N2:N', // Account column
+    spreadsheetId,
+    range: 'Transactions!N2:N', // Account column (same for both)
   });
 
   const values = response.data.values || [];
-  const accounts = new Set<string>();
+  const defaults =
+    budget === 'personal' ? DEFAULT_PERSONAL_ACCOUNTS : DEFAULT_BUSINESS_ACCOUNTS;
 
-  // Add default accounts as fallback
-  accounts.add('RBC Visa');
-  accounts.add('RBC Checking');
-  accounts.add('BMO Checking');
-  accounts.add('Chase Total Checking');
+  const accounts = new Set<string>(defaults);
 
   for (const row of values) {
     if (row[0]) accounts.add(row[0]);
@@ -476,16 +538,17 @@ export async function getUniqueAccounts(): Promise<string[]> {
   return Array.from(accounts).sort();
 }
 
-export async function getUniqueTags(): Promise<string[]> {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
-
+export async function getUniqueTags(budget: BudgetType): Promise<string[]> {
+  const spreadsheetId = getSpreadsheetId(budget);
   const sheets = getSheets();
 
+  // Personal: Tag is col P (index 15, column 16)
+  // Business: Tag is col O (index 14, column 15)
+  const tagColumn = budget === 'personal' ? 'P' : 'O';
+
   const response = await sheets.spreadsheets.values.get({
-    spreadsheetId: SPREADSHEET_ID,
-    range: 'Transactions!Q2:Q', // Tag column
+    spreadsheetId,
+    range: `Transactions!${tagColumn}2:${tagColumn}`,
   });
 
   const values = response.data.values || [];
@@ -496,46 +559,4 @@ export async function getUniqueTags(): Promise<string[]> {
   }
 
   return Array.from(tags).sort();
-}
-
-// Fetch defaults from Defaults sheet
-export async function fetchDefaults(): Promise<Defaults> {
-  if (!SPREADSHEET_ID) {
-    throw new Error('GOOGLE_SHEETS_ID environment variable is not configured');
-  }
-
-  try {
-    const sheets = getSheets();
-
-    const response = await sheets.spreadsheets.values.get({
-      spreadsheetId: SPREADSHEET_ID,
-      range: 'Defaults!A2:D', // Line Item, Vendor, Tag, Active
-    });
-
-    const rows = response.data.values || [];
-    const defaults: Defaults = {};
-
-    for (const row of rows) {
-      const [lineItem, vendor, tag, active] = row;
-
-      // Skip if no line item
-      if (!lineItem) continue;
-
-      // Skip inactive items
-      if (active !== undefined && active?.toUpperCase() !== 'TRUE') {
-        continue;
-      }
-
-      // Store defaults for this line item
-      defaults[lineItem] = {};
-      if (vendor) defaults[lineItem].vendor = vendor;
-      if (tag) defaults[lineItem].tag = tag;
-    }
-
-    return defaults;
-  } catch (error) {
-    console.error('Error fetching defaults from Defaults sheet:', error);
-    // Return empty defaults if sheet doesn't exist
-    return {};
-  }
 }
