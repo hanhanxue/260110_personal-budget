@@ -10,6 +10,7 @@ import type {
   BusinessTransactionInput,
   Currency,
   Distribute,
+  DefaultsMap,
 } from './types';
 import { DEFAULT_PERSONAL_ACCOUNTS, DEFAULT_BUSINESS_ACCOUNTS } from './types';
 
@@ -138,50 +139,50 @@ export async function fetchSchema(budget: BudgetType): Promise<Schema> {
 //   CAD Amount, CAD Rate, USD Amount, USD Rate, Vendor, Note,
 //   Receipt URL, Account, Tag, GST/HST Paid, Capital Expense, Submitted At
 
-function personalRowToTransaction(row: string[], index: number): PersonalTransaction {
+function personalRowToTransaction(row: unknown[], index: number): PersonalTransaction {
   return {
     id: String(index + 2),
-    transactionDate: row[0] || '',
-    table: row[1] || '',
-    subcategory: row[2] || '',
-    lineItem: row[3] || '',
-    amount: parseFloat(row[4]) || 0,
-    currency: (row[5] as Currency) || 'CAD',
-    cadAmount: parseFloat(row[6]) || 0,
-    cadRate: parseFloat(row[7]) || 1,
-    usdAmount: parseFloat(row[8]) || 0,
-    usdRate: parseFloat(row[9]) || 1,
-    vendor: row[10] || undefined,
-    note: row[11] || undefined,
-    receiptUrl: row[12] || undefined,
-    account: row[13] || '',
-    distribute: migrateDistribute(row[14] || 'one-time'),
-    tag: row[15] || undefined,
-    submittedAt: row[16] || '',
+    transactionDate: serialNumberToDate(row[0]),
+    table: String(row[1] || ''),
+    subcategory: String(row[2] || ''),
+    lineItem: String(row[3] || ''),
+    amount: toNumber(row[4]),
+    currency: (String(row[5] || 'CAD') as Currency),
+    cadAmount: toNumber(row[6]),
+    cadRate: toNumber(row[7], 1),
+    usdAmount: toNumber(row[8]),
+    usdRate: toNumber(row[9], 1),
+    vendor: row[10] ? String(row[10]) : undefined,
+    note: row[11] ? String(row[11]) : undefined,
+    receiptUrl: row[12] ? String(row[12]) : undefined,
+    account: String(row[13] || ''),
+    distribute: migrateDistribute(String(row[14] || 'one-time')),
+    tag: row[15] ? String(row[15]) : undefined,
+    submittedAt: String(row[16] || ''),
   };
 }
 
-function businessRowToTransaction(row: string[], index: number): BusinessTransaction {
+function businessRowToTransaction(row: unknown[], index: number): BusinessTransaction {
   return {
     id: String(index + 2),
-    transactionDate: row[0] || '',
-    table: row[1] || '',
-    subcategory: row[2] || '',
-    lineItem: row[3] || '',
-    amount: parseFloat(row[4]) || 0,
-    currency: (row[5] as Currency) || 'CAD',
-    cadAmount: parseFloat(row[6]) || 0,
-    cadRate: parseFloat(row[7]) || 1,
-    usdAmount: parseFloat(row[8]) || 0,
-    usdRate: parseFloat(row[9]) || 1,
-    vendor: row[10] || undefined,
-    note: row[11] || undefined,
-    receiptUrl: row[12] || undefined,
-    account: row[13] || '',
-    tag: row[14] || undefined,
-    gstHstPaid: row[15] ? parseFloat(row[15]) : undefined,
-    capitalExpense: row[16]?.toUpperCase() === 'TRUE',
-    submittedAt: row[17] || '',
+    transactionDate: serialNumberToDate(row[0]),
+    table: String(row[1] || ''),
+    subcategory: String(row[2] || ''),
+    lineItem: String(row[3] || ''),
+    amount: toNumber(row[4]),
+    currency: (String(row[5] || 'CAD') as Currency),
+    cadAmount: toNumber(row[6]),
+    cadRate: toNumber(row[7], 1),
+    usdAmount: toNumber(row[8]),
+    usdRate: toNumber(row[9], 1),
+    vendor: row[10] ? String(row[10]) : undefined,
+    note: row[11] ? String(row[11]) : undefined,
+    receiptUrl: row[12] ? String(row[12]) : undefined,
+    account: String(row[13] || ''),
+    tag: row[14] ? String(row[14]) : undefined,
+    gstHstPaid: row[15] ? toNumber(row[15]) : undefined,
+    capitalExpense: row[16] === true || String(row[16] || '').toUpperCase() === 'TRUE',
+    submittedAt: String(row[17] || ''),
   };
 }
 
@@ -194,6 +195,27 @@ function dateToSerialNumber(dateString: string): number {
   );
   const epoch = new Date(1899, 11, 30);
   return Math.floor((date.getTime() - epoch.getTime()) / (1000 * 60 * 60 * 24));
+}
+
+function serialNumberToDate(value: unknown): string {
+  if (typeof value === 'string' && value.includes('-')) {
+    return value;
+  }
+  const num = Number(value);
+  if (isNaN(num)) return String(value || '');
+  const epoch = new Date(1899, 11, 30);
+  const date = new Date(epoch.getTime() + num * 24 * 60 * 60 * 1000);
+  const yyyy = date.getFullYear();
+  const mm = String(date.getMonth() + 1).padStart(2, '0');
+  const dd = String(date.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+function toNumber(value: unknown, fallback: number = 0): number {
+  if (typeof value === 'number') return value;
+  if (!value) return fallback;
+  const num = parseFloat(String(value).replace(/[^0-9.\-]/g, ''));
+  return isNaN(num) ? fallback : num;
 }
 
 function personalTransactionToRow(transaction: PersonalTransactionInput): (string | number)[] {
@@ -267,6 +289,7 @@ export async function fetchTransactions(
   const response = await sheets.spreadsheets.values.get({
     spreadsheetId,
     range: `Transactions!A2:${lastCol}`,
+    valueRenderOption: 'UNFORMATTED_VALUE',
   });
 
   const rows = response.data.values || [];
@@ -379,7 +402,7 @@ export async function appendTransaction(
             },
             cell: {
               userEnteredFormat: {
-                numberFormat: { type: 'NUMBER', pattern: '#,##0.00' },
+                numberFormat: { type: 'NUMBER', pattern: '$#,##0.00' },
               },
             },
             fields: 'userEnteredFormat.numberFormat',
@@ -397,7 +420,7 @@ export async function appendTransaction(
             },
             cell: {
               userEnteredFormat: {
-                numberFormat: { type: 'NUMBER', pattern: '#,##0.00' },
+                numberFormat: { type: 'NUMBER', pattern: '$#,##0.00' },
               },
             },
             fields: 'userEnteredFormat.numberFormat',
@@ -414,7 +437,7 @@ export async function appendTransaction(
             },
             cell: {
               userEnteredFormat: {
-                numberFormat: { type: 'NUMBER', pattern: '#,##0.00' },
+                numberFormat: { type: 'NUMBER', pattern: '$#,##0.00' },
               },
             },
             fields: 'userEnteredFormat.numberFormat',
@@ -534,23 +557,54 @@ export async function getUniqueVendors(budget: BudgetType): Promise<string[]> {
   return Array.from(vendors).sort();
 }
 
+async function fetchAccountsFromSheet(budget: BudgetType): Promise<string[] | null> {
+  const spreadsheetId = getSpreadsheetId(budget);
+  const sheets = getSheets();
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Accounts!A2:B',
+    });
+
+    const rows = response.data.values || [];
+    const accounts: string[] = [];
+
+    for (const row of rows) {
+      const name = row[0];
+      const active = row[1];
+      if (name && (!active || String(active).toUpperCase() === 'TRUE')) {
+        accounts.push(String(name));
+      }
+    }
+
+    return accounts.length > 0 ? accounts : null;
+  } catch {
+    // Sheet doesn't exist or can't be read — fall back
+    return null;
+  }
+}
+
 export async function getUniqueAccounts(budget: BudgetType): Promise<string[]> {
   const spreadsheetId = getSpreadsheetId(budget);
   const sheets = getSheets();
 
-  const response = await sheets.spreadsheets.values.get({
-    spreadsheetId,
-    range: 'Transactions!N2:N', // Account column (same for both)
-  });
+  const [sheetAccounts, transactionsResponse] = await Promise.all([
+    fetchAccountsFromSheet(budget),
+    sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Transactions!N2:N', // Account column (same for both)
+    }),
+  ]);
 
-  const values = response.data.values || [];
-  const defaults =
-    budget === 'personal' ? DEFAULT_PERSONAL_ACCOUNTS : DEFAULT_BUSINESS_ACCOUNTS;
+  const baseAccounts = sheetAccounts ??
+    (budget === 'personal' ? DEFAULT_PERSONAL_ACCOUNTS : DEFAULT_BUSINESS_ACCOUNTS);
 
-  const accounts = new Set<string>(defaults);
+  const accounts = new Set<string>(baseAccounts);
 
+  const values = transactionsResponse.data.values || [];
   for (const row of values) {
-    if (row[0]) accounts.add(row[0]);
+    if (row[0]) accounts.add(String(row[0]));
   }
 
   return Array.from(accounts).sort();
@@ -577,4 +631,39 @@ export async function getUniqueTags(budget: BudgetType): Promise<string[]> {
   }
 
   return Array.from(tags).sort();
+}
+
+export async function fetchDefaults(budget: BudgetType): Promise<DefaultsMap> {
+  const spreadsheetId = getSpreadsheetId(budget);
+  const sheets = getSheets();
+
+  try {
+    const response = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range: 'Defaults!A2:D',
+    });
+
+    const rows = response.data.values || [];
+    const defaults: DefaultsMap = {};
+
+    for (const row of rows) {
+      const lineItem = row[0];
+      const vendor = row[1];
+      const tag = row[2];
+      const active = row[3];
+
+      if (!lineItem) continue;
+      if (active && String(active).toUpperCase() !== 'TRUE') continue;
+
+      defaults[String(lineItem)] = {
+        ...(vendor ? { vendor: String(vendor) } : {}),
+        ...(tag ? { tag: String(tag) } : {}),
+      };
+    }
+
+    return defaults;
+  } catch {
+    // Sheet doesn't exist — return empty
+    return {};
+  }
 }

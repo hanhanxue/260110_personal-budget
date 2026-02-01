@@ -63,7 +63,7 @@ export default function TransactionsListWrapper() {
   return (
     <div className="space-y-4">
       {/* Date Filters */}
-      <div className="flex gap-3">
+      <div className="flex flex-col gap-3">
         <div className="flex-1">
           <label className="text-xs text-gray-500 dark:text-gray-400">From</label>
           <input

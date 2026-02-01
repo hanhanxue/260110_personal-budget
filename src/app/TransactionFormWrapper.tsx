@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import TransactionForm from '@/components/TransactionForm';
-import type { Schema, BudgetType } from '@/lib/types';
+import type { Schema, BudgetType, DefaultsMap } from '@/lib/types';
 import { getBudgetMode } from '@/lib/preferences';
 
 const emptySchema: Schema = { tables: [], subcategories: {}, lineItems: {} };
@@ -13,28 +13,32 @@ export default function TransactionFormWrapper() {
   const [vendors, setVendors] = useState<string[]>([]);
   const [accounts, setAccounts] = useState<string[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [defaults, setDefaults] = useState<DefaultsMap>({});
   const [isLoading, setIsLoading] = useState(true);
 
   const fetchData = useCallback(async (mode: BudgetType) => {
     setIsLoading(true);
     try {
-      const [schemaRes, vendorsRes, accountsRes, tagsRes] = await Promise.all([
+      const [schemaRes, vendorsRes, accountsRes, tagsRes, defaultsRes] = await Promise.all([
         fetch(`/api/${mode}/schema`).then((r) => r.json()),
         fetch(`/api/${mode}/transactions/vendors`).then((r) => r.json()),
         fetch(`/api/${mode}/transactions/accounts`).then((r) => r.json()),
         fetch(`/api/${mode}/transactions/tags`).then((r) => r.json()),
+        fetch(`/api/${mode}/transactions/defaults`).then((r) => r.json()),
       ]);
 
       setSchema(schemaRes.success ? schemaRes.data : emptySchema);
       setVendors(vendorsRes.success ? vendorsRes.data.values : []);
       setAccounts(accountsRes.success ? accountsRes.data.values : []);
       setTags(tagsRes.success ? tagsRes.data.values : []);
+      setDefaults(defaultsRes.success ? defaultsRes.data.defaults : {});
     } catch (error) {
       console.error('Error fetching data:', error);
       setSchema(emptySchema);
       setVendors([]);
       setAccounts([]);
       setTags([]);
+      setDefaults({});
     } finally {
       setIsLoading(false);
     }
@@ -69,6 +73,7 @@ export default function TransactionFormWrapper() {
       vendors={vendors}
       accounts={accounts}
       tags={tags}
+      defaults={defaults}
     />
   );
 }

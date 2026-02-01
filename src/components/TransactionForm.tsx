@@ -11,6 +11,7 @@ import type {
   PersonalTransactionInput,
   BusinessTransactionInput,
   ExchangeRates,
+  DefaultsMap,
 } from '@/lib/types';
 import { CURRENCIES, CURRENCY_SYMBOLS, DISTRIBUTE_OPTIONS } from '@/lib/types';
 import {
@@ -26,6 +27,7 @@ interface TransactionFormProps {
   vendors: string[];
   accounts: string[];
   tags: string[];
+  defaults?: DefaultsMap;
   onSuccess?: () => void;
 }
 
@@ -41,6 +43,7 @@ export default function TransactionForm({
   vendors,
   accounts,
   tags,
+  defaults,
   onSuccess,
 }: TransactionFormProps) {
   // Initialize with current date
@@ -119,6 +122,15 @@ export default function TransactionForm({
       }
     }
   }, [schema, budgetType, accounts]);
+
+  // Auto-fill vendor/tag from defaults when line item changes
+  useEffect(() => {
+    if (!defaults || !lineItem) return;
+    const match = defaults[lineItem];
+    if (!match) return;
+    if (match.vendor && !vendor) setVendor(match.vendor);
+    if (match.tag && !tag) setTag(match.tag);
+  }, [lineItem, defaults]);
 
   const fetchRates = useCallback(async () => {
     const numAmount = parseFloat(amount);
@@ -472,15 +484,21 @@ export default function TransactionForm({
             </select>
           </div>
         ) : (
-          <div className="form-group flex items-end pb-1">
+          <div className="form-group flex items-center h-full justify-center">
             <label className="flex items-center gap-2 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={capitalExpense}
-                onChange={(e) => setCapitalExpense(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300"
-              />
-              <span className="text-sm font-medium text-gray-700">Capital</span>
+              <span className="text-sm font-medium text-gray-700 dark:text-gray-300">CapEx</span>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={capitalExpense}
+                onClick={() => setCapitalExpense(!capitalExpense)}
+                style={{ minHeight: 'auto' }}
+                className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out ${capitalExpense ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+              >
+                <span
+                  className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition duration-200 ease-in-out ${capitalExpense ? 'translate-x-4' : 'translate-x-0'}`}
+                />
+              </button>
             </label>
           </div>
         )}

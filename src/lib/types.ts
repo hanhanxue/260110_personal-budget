@@ -152,3 +152,10 @@ export interface TransactionsListResponse {
 export interface AutocompleteResponse {
   values: string[];
 }
+
+// Defaults types (line item → vendor/tag auto-fill)
+export type DefaultsMap = Record<string, { vendor?: string; tag?: string }>;
+
+export interface DefaultsResponse {
+  defaults: DefaultsMap;
+}
