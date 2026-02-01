@@ -80,9 +80,10 @@ export default function PasswordProtection({ children }: PasswordProtectionProps
               <div>
                 <input
                   type="password"
+                  inputMode="numeric"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 text-base rounded-lg border border-gray-300 
+                  className="w-full px-4 py-3 text-base rounded-lg border border-gray-300
                            focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                   placeholder="Enter password"
                   autoFocus

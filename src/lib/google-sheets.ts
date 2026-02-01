@@ -202,7 +202,7 @@ function personalTransactionToRow(transaction: PersonalTransactionInput): (strin
     transaction.table,
     transaction.subcategory,
     transaction.lineItem,
-    String(transaction.amount),
+    transaction.amount,
     transaction.currency,
     transaction.cadAmount,
     transaction.cadRate,
@@ -224,7 +224,7 @@ function businessTransactionToRow(transaction: BusinessTransactionInput): (strin
     transaction.table,
     transaction.subcategory,
     transaction.lineItem,
-    String(transaction.amount),
+    transaction.amount,
     transaction.currency,
     transaction.cadAmount,
     transaction.cadRate,
@@ -362,6 +362,24 @@ export async function appendTransaction(
             cell: {
               userEnteredFormat: {
                 numberFormat: { type: 'DATE', pattern: 'yyyy-mm-dd' },
+              },
+            },
+            fields: 'userEnteredFormat.numberFormat',
+          },
+        },
+        // Amount (col E, index 4) — currency
+        {
+          repeatCell: {
+            range: {
+              sheetId,
+              startRowIndex: 1,
+              endRowIndex: 2,
+              startColumnIndex: 4,
+              endColumnIndex: 5,
+            },
+            cell: {
+              userEnteredFormat: {
+                numberFormat: { type: 'NUMBER', pattern: '#,##0.00' },
               },
             },
             fields: 'userEnteredFormat.numberFormat',
