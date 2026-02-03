@@ -240,7 +240,7 @@ function personalTransactionToRow(transaction: PersonalTransactionInput): (strin
   ];
 }
 
-function businessTransactionToRow(transaction: BusinessTransactionInput): (string | number)[] {
+function businessTransactionToRow(transaction: BusinessTransactionInput): (string | number | boolean)[] {
   return [
     dateToSerialNumber(transaction.transactionDate),
     transaction.table,
@@ -258,12 +258,12 @@ function businessTransactionToRow(transaction: BusinessTransactionInput): (strin
     transaction.account,
     transaction.tag || '',
     transaction.gstHstPaid != null ? String(transaction.gstHstPaid) : '',
-    transaction.capitalExpense ? 'TRUE' : 'FALSE',
+    transaction.capitalExpense,
     transaction.submittedAt,
   ];
 }
 
-function transactionToRow(budget: BudgetType, transaction: TransactionInput): (string | number)[] {
+function transactionToRow(budget: BudgetType, transaction: TransactionInput): (string | number | boolean)[] {
   if (budget === 'personal') {
     return personalTransactionToRow(transaction as PersonalTransactionInput);
   }
@@ -365,6 +365,9 @@ export async function appendTransaction(
                 values: row.map((value) => {
                   if (typeof value === 'number') {
                     return { userEnteredValue: { numberValue: value } };
+                  }
+                  if (typeof value === 'boolean') {
+                    return { userEnteredValue: { boolValue: value } };
                   }
                   return { userEnteredValue: { stringValue: String(value) } };
                 }),
